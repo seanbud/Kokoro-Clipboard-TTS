@@ -133,7 +133,7 @@ export default function SettingsWindow() {
   }, [recording]);
 
   return (
-    <div className="h-full surface-low text-white">
+    <div className="h-full surface-low text-white flex flex-col">
       {/* Title bar */}
       <div
         className="flex items-center justify-between px-5 py-3 border-b border-white/5 bg-white/5"
@@ -144,7 +144,7 @@ export default function SettingsWindow() {
         </h1>
       </div>
 
-      <div className="p-6 space-y-6 animate-fade-in">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 animate-fade-in">
         {/* Voice Preset */}
         <div className="space-y-2">
           <label className="text-xs font-medium text-white/50 uppercase tracking-wider">

@@ -63,6 +63,13 @@
     "externalBin": ["binaries/kokoro"]
   },
   "plugins": {
+    "shell": {
+      "scope": [
+        { "name": "python", "cmd": "python", "sidecar": true },
+        { "name": "venv-python", "path": ".sidecar-venv/Scripts/python.exe" },
+        { "name": "venv-python-unix", "path": ".sidecar-venv/bin/python" }
+      ]
+    },
     "updater": {
       "pubkey": "YOUR_UPDATER_PUBLIC_KEY_HERE",
       "endpoints": [

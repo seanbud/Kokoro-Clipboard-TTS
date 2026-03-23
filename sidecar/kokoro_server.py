@@ -31,13 +31,23 @@ from kokoro import KPipeline
 
 app = Flask(__name__)
 stop_event = threading.Event()
+pipeline = None
 
-print("[Sidecar] Initializing Kokoro Pipeline (this may take a moment to download weights on first run...)")
-# 'a' => American English, 'b' => British English
-pipeline = KPipeline(lang_code='a') 
+def get_pipeline():
+    global pipeline
+    if pipeline is None:
+        print("[Sidecar] Initializing Kokoro Pipeline (this may take a moment to download weights on first run...)")
+        try:
+            pipeline = KPipeline(lang_code='a')
+            print("[Sidecar] Pipeline initialized successfully.")
+        except Exception as e:
+            print(f"[Sidecar] CRITICAL: Failed to initialize Pipeline: {e}")
+            raise e
+    return pipeline
 
 @app.route("/tts", methods=["POST"])
 def tts():
+    p = get_pipeline()
     data = request.json
     text = data.get("text", "")
     speed = data.get("speed", 1.0)
@@ -56,7 +66,7 @@ def tts():
         print("[Sidecar] Playback started")
         try:
             # Generate audio chunks
-            generator = pipeline(text, voice=voice, speed=speed)
+            generator = p(text, voice=voice, speed=speed)
             for i, (gs, ps, audio) in enumerate(generator):
                 if stop_event.is_set():
                     print("[Sidecar] Playback interrupted")

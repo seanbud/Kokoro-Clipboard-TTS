@@ -38,14 +38,43 @@ impl SidecarManager {
                 .output();
         }
 
-        println!("[Kokoro] Attempting to spawn sidecar: kokoro");
-        
-        let sidecar = app.shell()
-            .sidecar("kokoro")
-            .map_err(|e| format!("Failed to create sidecar command: {e}"))?;
+        println!("[Kokoro] Attempting to spawn sidecar...");
 
-        let (mut rx, child) = sidecar.spawn()
-            .map_err(|e| format!("Failed to spawn sidecar: {e}"))?;
+        // ─── Development vs Production Spawning ───
+        
+        let (mut rx, child) = if cfg!(debug_assertions) {
+            println!("[Kokoro] DEBUG MODE: Spawning sidecar from source using venv...");
+            
+            // Resolve project root (one level up from src-tauri)
+            let project_root = app.path().resource_dir().unwrap()
+                .parent().unwrap().to_path_buf();
+            
+            #[cfg(target_os = "windows")]
+            let python_path = project_root.join(".sidecar-venv").join("Scripts").join("python.exe");
+            #[cfg(not(target_os = "windows"))]
+            let python_path = project_root.join(".sidecar-venv").join("bin").join("python");
+            
+            let script_path = project_root.join("sidecar").join("kokoro_server.py");
+
+            println!("[Kokoro] Venv Python: {:?}", python_path);
+            println!("[Kokoro] Script path: {:?}", script_path);
+
+            if !python_path.exists() {
+                return Err(format!("Python venv not found at {:?}", python_path));
+            }
+
+            let cmd = app.shell().command(python_path.to_string_lossy().to_string())
+                .args([script_path.to_string_lossy().to_string()]);
+            
+            cmd.spawn().map_err(|e| format!("Failed to spawn python source: {e}"))?
+        } else {
+            println!("[Kokoro] RELEASE MODE: Spawning bundled sidecar binary...");
+            let sidecar = app.shell()
+                .sidecar("kokoro")
+                .map_err(|e| format!("Failed to create sidecar command: {e}"))?;
+
+            sidecar.spawn().map_err(|e| format!("Failed to spawn sidecar binary: {e}"))?
+        };
 
         tauri::async_runtime::spawn(async move {
             use tauri_plugin_shell::process::CommandEvent;
@@ -68,7 +97,7 @@ impl SidecarManager {
             }
         });
 
-        println!("[Kokoro] Sidecar spawned successfully");
+        println!("[Kokoro] Sidecar process managed successfully");
 
         self.child = Some(child);
         Ok(())
