@@ -27,7 +27,15 @@
     "clipboard-manager:allow-write-text",
     "shell:default",
     "shell:allow-execute",
-    "shell:allow-spawn",
-    "shell:allow-kill"
+    "shell:allow-kill",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        { "cmd": "python", "args": true },
+        { "name": "binaries/kokoro", "sidecar": true },
+        { "path": ".sidecar-venv/Scripts/python.exe", "args": true },
+        { "path": ".sidecar-venv/bin/python", "args": true }
+      ]
+    }
   ]
 }
