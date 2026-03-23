@@ -26,8 +26,6 @@ A lightweight, cross-platform desktop app that reads your clipboard aloud using 
 
 ## 📦 Installation
 
-## 📦 Installation
-
 **Kokoro Clipboard TTS is designed for zero-config easy installation.**
 
 1. Go to the [Releases](https://github.com/seanbud/Kokoro-Clipboard-TTS/releases) page.
