@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
 
 /// Manages the lifecycle of the Kokoro TTS sidecar process.
@@ -53,10 +53,11 @@ impl SidecarManager {
                 project_root = project_root.parent().unwrap().to_path_buf();
             }
 
-            #[cfg(target_os = "windows")]
-            let mut python_path = project_root.join(".sidecar-venv").join("Scripts").join("python.exe");
-            #[cfg(not(target_os = "windows"))]
-            let mut python_path = project_root.join(".sidecar-venv").join("bin").join("python");
+            let mut python_path = if cfg!(target_os = "windows") {
+                project_root.join(".sidecar-venv").join("Scripts").join("python.exe")
+            } else {
+                project_root.join(".sidecar-venv").join("bin").join("python")
+            };
             
             let script_path = project_root.join("sidecar").join("kokoro_server.py");
 
@@ -68,10 +69,11 @@ impl SidecarManager {
                    for _ in 0..10 {
                        if p.join(".sidecar-venv").exists() {
                            project_root = p;
-                           #[cfg(target_os = "windows")]
-                           python_path = project_root.join(".sidecar-venv").join("Scripts").join("python.exe");
-                           #[cfg(not(target_os = "windows"))]
-                           python_path = project_root.join(".sidecar-venv").join("bin").join("python");
+                           python_path = if cfg!(target_os = "windows") {
+                               project_root.join(".sidecar-venv").join("Scripts").join("python.exe")
+                           } else {
+                               project_root.join(".sidecar-venv").join("bin").join("python")
+                           };
                            break;
                        }
                        if let Some(parent) = p.parent() {
