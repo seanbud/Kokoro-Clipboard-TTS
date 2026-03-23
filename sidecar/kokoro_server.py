@@ -69,32 +69,8 @@ def cleanup_zombies():
     except:
         pass
 
-def watchdog():
-    """ Monitors the parent process and exits if it dies. """
-    import time
-    initial_ppid = os.getppid()
-    # If ppid is 1, we are already orphaned
-    if initial_ppid <= 1 and sys.platform != "win32":
-        return
-
-    print(f"[Sidecar] Watchdog active. Monitoring parent: {initial_ppid}")
-    while True:
-        try:
-            # Check if parent is still alive
-            if sys.platform == "win32":
-                # On Windows, os.kill(child, 0) works if we have permissions
-                os.kill(initial_ppid, 0)
-            else:
-                if os.getppid() != initial_ppid:
-                    raise OSError()
-        except OSError:
-            print("[Sidecar] Parent process lost. Exiting...")
-            os._exit(0)
-        time.sleep(5)
-
 # Initialize
 cleanup_zombies()
-threading.Thread(target=watchdog, daemon=True).start()
 
 @app.route("/tts", methods=["POST"])
 def tts():
