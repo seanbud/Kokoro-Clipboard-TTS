@@ -1,4 +1,4 @@
-# 🎙️ Kokoro Clipboard TTS
+# Kokoro Clipboard TTS
 
 <div align="center">
   <img src="public/icon.png" width="128" alt="Kokoro Clipboard TTS Logo">
@@ -6,11 +6,20 @@
 
 <div align="center">
 
-A **100% local, open-source** desktop app that reads your clipboard aloud using **Kokoro-82M** AI text-to-speech. **Your data never leaves your PC.** No cloud. No API keys. No telemetry. Just fast, private, offline TTS.
+**A locally run, open-source** TTS desktop app.
 
-**Windows 10/11** · **macOS (Universal)**
-
+Reads your clipboard aloud with [**Kokoro-82M**](https://github.com/hexgrad/kokoro) AI text-to-speech.
 </div>
+</br>
+
+---
+
+## 🛡️ Privacy
+  Your data never leaves your PC.
+  
+  No cloud. No API keys. No telemetry. 
+  
+  Just fast, private, offline TTS.
 
 ---
 
