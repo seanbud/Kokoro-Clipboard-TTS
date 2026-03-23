@@ -45,6 +45,24 @@ def get_pipeline():
             raise e
     return pipeline
 
+def watchdog():
+    """ Monitors the parent process and exits if it dies. """
+    import psutil
+    import time
+    try:
+        parent = psutil.Process(os.getppid())
+        print(f"[Sidecar] Watchdog active. Monitoring parent PID: {parent.pid}")
+        while True:
+            if not parent.is_running():
+                print("[Sidecar] Parent process lost. Exiting...")
+                os._exit(0)
+            time.sleep(5)
+    except Exception as e:
+        print(f"[Sidecar] Watchdog error: {e}")
+
+# Start watchdog thread immediately
+threading.Thread(target=watchdog, daemon=True).start()
+
 @app.route("/tts", methods=["POST"])
 def tts():
     p = get_pipeline()
