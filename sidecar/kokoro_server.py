@@ -46,19 +46,27 @@ def get_pipeline():
     return pipeline
 
 def watchdog():
-    """ Monitors the parent process and exits if it dies. """
-    import psutil
-    import time
+    """ Monitors the parent process and exits if it dies. Safely fails if psutil is missing. """
     try:
-        parent = psutil.Process(os.getppid())
-        print(f"[Sidecar] Watchdog active. Monitoring parent PID: {parent.pid}")
+        import psutil
+        import time
+        initial_ppid = os.getppid()
+        parent = psutil.Process(initial_ppid)
+        print(f"[Sidecar] Watchdog active. Monitoring parent PID: {initial_ppid}")
         while True:
-            if not parent.is_running():
+            if not parent.is_running() or os.getppid() != initial_ppid:
                 print("[Sidecar] Parent process lost. Exiting...")
                 os._exit(0)
             time.sleep(5)
     except Exception as e:
-        print(f"[Sidecar] Watchdog error: {e}")
+        print(f"[Sidecar] Watchdog disabled or limited: {e}")
+        # Fallback to a very simple check that works on some systems
+        import time
+        initial_ppid = os.getppid()
+        while True:
+            if os.getppid() != initial_ppid:
+                os._exit(0)
+            time.sleep(10)
 
 # Start watchdog thread immediately
 threading.Thread(target=watchdog, daemon=True).start()
