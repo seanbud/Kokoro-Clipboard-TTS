@@ -6,7 +6,7 @@
 
 <div align="center">
 
-A lightweight, cross-platform desktop app that reads your clipboard aloud using **Kokoro-82M** — a blazing-fast, local AI text-to-speech model.
+A **100% local, open-source** desktop app that reads your clipboard aloud using **Kokoro-82M** AI text-to-speech. **Your data never leaves your PC.** No cloud. No API keys. No telemetry. Just fast, private, offline TTS.
 
 **Windows 10/11** · **macOS (Universal)**
 
