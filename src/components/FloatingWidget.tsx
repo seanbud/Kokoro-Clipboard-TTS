@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
 import { listen } from "@tauri-apps/api/event";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
+import { info, error } from "@tauri-apps/plugin-log";
 import { cleanTextForTTS } from "../utils/textCleaner";
 
 // ─── Speed Notches ─────────────────────────────────────────────────────────
@@ -38,13 +39,13 @@ export default function FloatingWidget() {
   // ── Load persisted speed on mount ──
   useEffect(() => {
     (async () => {
-      console.log("[Kokoro UI] Loading preferences...");
+      info("[Kokoro UI] Loading preferences...");
       const store = await load("settings.json", { defaults: {}, autoSave: true });
       storeRef.current = store;
       const saved = await store.get<number>("tts-speed-index");
       if (saved !== null && saved !== undefined && saved >= 0 && saved < SPEED_NOTCHES.length) {
         setSpeedIndex(saved);
-        console.log(`[Kokoro UI] Restored speed setting: ${SPEED_NOTCHES[saved]}x`);
+        info(`[Kokoro UI] Restored speed setting: ${SPEED_NOTCHES[saved]}x`);
       }
     })();
   }, []);
@@ -58,30 +59,30 @@ export default function FloatingWidget() {
   useEffect(() => {
     const unlisten = listen("shortcut-triggered", async () => {
       try {
-        console.log("[Kokoro UI] ------------- HOTKEY TRIGGERED -------------");
-        console.log("[Kokoro UI] Reading clipboard...");
+        info("[Kokoro UI] ------------- HOTKEY TRIGGERED -------------");
+        info("[Kokoro UI] Reading clipboard...");
         const clipboardText = await readText();
-        console.log(`[Kokoro UI] Captured text length: ${clipboardText?.length || 0} chars`);
+        info(`[Kokoro UI] Captured text length: ${clipboardText?.length || 0} chars`);
 
         if (clipboardText && clipboardText.trim()) {
           const cleaned = cleanTextForTTS(clipboardText);
-          console.log("[Kokoro UI] Cleaned text snippet:", cleaned.substring(0, 60), "...");
+          info(`[Kokoro UI] Cleaned text snippet: ${cleaned.substring(0, 60)}...`);
           
           lastAnalyzedText.current = cleaned;
 
-          console.log("[Kokoro UI] Showing reader UI window...");
+          info("[Kokoro UI] Showing reader UI window...");
           await invoke("move_reader_window", { x: 100, y: 100 });
           
-          console.log(`[Kokoro UI] Forwarding to sidecar... (Speed: ${speed})`);
+          info(`[Kokoro UI] Forwarding to sidecar... (Speed: ${speed})`);
           setIsPlaying(true);
           
           await invoke("send_to_tts", { text: cleaned, speed: speed, voice: "am_fenrir" });
-          console.log("[Kokoro UI] Request dispatched to sidecar successfully.");
+          info("[Kokoro UI] Request dispatched to sidecar successfully.");
         } else {
-          console.log("[Kokoro UI] Ignored: Clipboard is empty or contains non-text data.");
+          info("[Kokoro UI] Ignored: Clipboard is empty or contains non-text data.");
         }
       } catch (err) {
-        console.error("[Kokoro UI] Shortcut handler error:", err);
+        error(`[Kokoro UI] Shortcut handler error: ${err}`);
       }
     });
 
@@ -107,26 +108,26 @@ export default function FloatingWidget() {
 
   // ── Play / Pause ──
   const handlePlayPause = useCallback(async () => {
-    console.log(`[Kokoro UI] ⏯️ Play/Pause clicked. User wants to ${isPlaying ? 'PAUSE' : 'PLAY'}`);
+    info(`[Kokoro UI] ⏯️ Play/Pause clicked. User wants to ${isPlaying ? 'PAUSE' : 'PLAY'}`);
     if (isPlaying) {
-      console.log("[Kokoro UI] Invoking stop_tts to halt audio...");
-      await invoke("stop_tts").catch(console.error);
+      info("[Kokoro UI] Invoking stop_tts to halt audio...");
+      await invoke("stop_tts").catch((err) => error(String(err)));
       setIsPlaying(false);
     } else {
       if (lastAnalyzedText.current) {
-        console.log("[Kokoro UI] Re-reading text from memory...");
+        info("[Kokoro UI] Re-reading text from memory...");
         setIsPlaying(true);
         await invoke("send_to_tts", { text: lastAnalyzedText.current, speed: speed, voice: "am_fenrir" });
       } else {
-        console.log("[Kokoro UI] Warning: No text in memory, cannot resume playback. Waiting for shortcut trigger!");
+        info("[Kokoro UI] Warning: No text in memory, cannot resume playback. Waiting for shortcut trigger!");
       }
     }
   }, [isPlaying, speed]);
 
   // ── Stop ──
   const handleStop = useCallback(async () => {
-    console.log("[Kokoro UI] ⏹️ Stop clicked. Halting audio completely.");
-    await invoke("stop_tts").catch(console.error);
+    info("[Kokoro UI] ⏹️ Stop clicked. Halting audio completely.");
+    await invoke("stop_tts").catch((err) => error(String(err)));
     setIsPlaying(false);
   }, []);
 

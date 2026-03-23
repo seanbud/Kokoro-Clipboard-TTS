@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { info, error } from "@tauri-apps/plugin-log";
 
 export default function Tutorial() {
   const [initializing, setInitializing] = useState(true);
@@ -8,7 +9,7 @@ export default function Tutorial() {
   useEffect(() => {
     (async () => {
       try {
-        console.log("[Kokoro] Initializing Tutorial...");
+        info("[Kokoro UI] Initializing Tutorial...");
         const store = await load("settings.json", { defaults: {}, autoSave: true });
         const done = await store.get<boolean>("first-run-done");
         
@@ -18,7 +19,7 @@ export default function Tutorial() {
           await win.hide();
         }
       } catch (err) {
-        console.error("[Kokoro] Tutorial init failed:", err);
+        error(`[Kokoro UI] Tutorial init failed: ${err}`);
       } finally {
         setInitializing(false);
       }
@@ -32,7 +33,7 @@ export default function Tutorial() {
       const win = getCurrentWebviewWindow();
       await win.hide();
     } catch (err) {
-      console.error("[Kokoro] Dismiss failed:", err);
+      error(`[Kokoro UI] Dismiss failed: ${err}`);
     }
   };
 
