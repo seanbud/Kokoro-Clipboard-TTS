@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { load } from "@tauri-apps/plugin-store";
+import { listen } from "@tauri-apps/api/event";
+import { readText } from "@tauri-apps/plugin-clipboard-manager";
+import { cleanTextForTTS } from "../utils/textCleaner";
 
 // ─── Speed Notches ─────────────────────────────────────────────────────────
 const SPEED_NOTCHES = [1, 1.25, 1.5, 1.75, 2, 0.5, 0.75] as const;
@@ -30,15 +33,18 @@ export default function FloatingWidget() {
   const storeRef = useRef<Awaited<ReturnType<typeof load>> | null>(null);
 
   const speed = SPEED_NOTCHES[speedIndex];
+  const lastAnalyzedText = useRef<string>("");
 
   // ── Load persisted speed on mount ──
   useEffect(() => {
     (async () => {
+      console.log("[Kokoro UI] Loading preferences...");
       const store = await load("settings.json", { defaults: {}, autoSave: true });
       storeRef.current = store;
       const saved = await store.get<number>("tts-speed-index");
       if (saved !== null && saved !== undefined && saved >= 0 && saved < SPEED_NOTCHES.length) {
         setSpeedIndex(saved);
+        console.log(`[Kokoro UI] Restored speed setting: ${SPEED_NOTCHES[saved]}x`);
       }
     })();
   }, []);
@@ -47,6 +53,40 @@ export default function FloatingWidget() {
   useEffect(() => {
     storeRef.current?.set("tts-speed-index", speedIndex);
   }, [speedIndex]);
+
+  // ── Listen to Hotkey ──
+  useEffect(() => {
+    const unlisten = listen("shortcut-triggered", async () => {
+      try {
+        console.log("[Kokoro UI] ------------- HOTKEY TRIGGERED -------------");
+        console.log("[Kokoro UI] Reading clipboard...");
+        const clipboardText = await readText();
+        console.log(`[Kokoro UI] Captured text length: ${clipboardText?.length || 0} chars`);
+
+        if (clipboardText && clipboardText.trim()) {
+          const cleaned = cleanTextForTTS(clipboardText);
+          console.log("[Kokoro UI] Cleaned text snippet:", cleaned.substring(0, 60), "...");
+          
+          lastAnalyzedText.current = cleaned;
+
+          console.log("[Kokoro UI] Showing reader UI window...");
+          await invoke("move_reader_window", { x: 100, y: 100 });
+          
+          console.log(`[Kokoro UI] Forwarding to sidecar... (Speed: ${speed})`);
+          setIsPlaying(true);
+          
+          await invoke("send_to_tts", { text: cleaned, speed: speed, voice: "am_fenrir" });
+          console.log("[Kokoro UI] Request dispatched to sidecar successfully.");
+        } else {
+          console.log("[Kokoro UI] Ignored: Clipboard is empty or contains non-text data.");
+        }
+      } catch (err) {
+        console.error("[Kokoro UI] Shortcut handler error:", err);
+      }
+    });
+
+    return () => { unlisten.then(fn => fn()); };
+  }, [speed]);
 
   // ── Speed cycling ──
   const cycleSpeed = useCallback((direction: 1 | -1) => {
@@ -67,36 +107,41 @@ export default function FloatingWidget() {
 
   // ── Play / Pause ──
   const handlePlayPause = useCallback(async () => {
+    console.log(`[Kokoro UI] ⏯️ Play/Pause clicked. User wants to ${isPlaying ? 'PAUSE' : 'PLAY'}`);
     if (isPlaying) {
-      // Pause — just stop audio for MVP (no pause/resume on sidecar)
+      console.log("[Kokoro UI] Invoking stop_tts to halt audio...");
       await invoke("stop_tts").catch(console.error);
       setIsPlaying(false);
     } else {
-      setIsPlaying(true);
-      // TTS invocation is triggered by the shortcut handler on the Rust side
-      // This button is for pause/resume of an in-progress read
+      if (lastAnalyzedText.current) {
+        console.log("[Kokoro UI] Re-reading text from memory...");
+        setIsPlaying(true);
+        await invoke("send_to_tts", { text: lastAnalyzedText.current, speed: speed, voice: "am_fenrir" });
+      } else {
+        console.log("[Kokoro UI] Warning: No text in memory, cannot resume playback. Waiting for shortcut trigger!");
+      }
     }
-  }, [isPlaying]);
+  }, [isPlaying, speed]);
 
   // ── Stop ──
   const handleStop = useCallback(async () => {
+    console.log("[Kokoro UI] ⏹️ Stop clicked. Halting audio completely.");
     await invoke("stop_tts").catch(console.error);
     setIsPlaying(false);
   }, []);
 
   return (
     <div className="h-full flex items-center justify-center p-1" data-tauri-drag-region>
-      <div className="glass rounded-2xl flex items-center gap-1 px-2 py-1.5 animate-pop">
+      <div className="surface shadow-2xl rounded-full flex items-center gap-1.5 px-2 py-1.5 animate-pop">
         {/* Play / Pause */}
         <button
           onClick={handlePlayPause}
           title={isPlaying ? "Pause" : "Read Aloud"}
           className="
-            w-10 h-10 rounded-xl flex items-center justify-center
-            bg-gradient-to-br from-indigo-500 to-purple-600
-            hover:from-indigo-400 hover:to-purple-500
+            w-10 h-10 rounded-full flex items-center justify-center
+            bg-[#8AB4F8] hover:bg-[#AECBFA]
             active:scale-95 transition-smooth
-            text-white shadow-lg shadow-indigo-500/30
+            text-[#202124] shadow-md
           "
         >
           {isPlaying ? <PauseIcon /> : <PlayIcon />}
@@ -107,10 +152,10 @@ export default function FloatingWidget() {
           onClick={handleStop}
           title="Stop"
           className="
-            w-8 h-8 rounded-lg flex items-center justify-center
-            bg-white/10 hover:bg-red-500/80
+            w-8 h-8 rounded-full flex items-center justify-center
+            bg-white/5 hover:bg-red-500/20
             active:scale-95 transition-smooth
-            text-white/70 hover:text-white
+            text-white/60 hover:text-red-400
           "
         >
           <StopIcon />
@@ -122,12 +167,12 @@ export default function FloatingWidget() {
           onWheel={handleWheel}
           title={`Speed: ${speed}x (click or scroll to change)`}
           className="
-            w-10 h-10 rounded-full flex items-center justify-center
-            bg-white/10 hover:bg-white/20
+            min-w-[44px] h-10 px-2.5 rounded-full flex items-center justify-center
+            bg-white/5 hover:bg-white/10
             active:scale-95 transition-smooth
-            text-xs font-bold text-white/90
+            text-[13px] font-semibold text-white/80
             tabular-nums select-none cursor-pointer
-            border border-white/10
+            border border-white/5
           "
         >
           {speed}x
