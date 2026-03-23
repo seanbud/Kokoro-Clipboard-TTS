@@ -31,10 +31,10 @@
     {
       "identifier": "shell:allow-spawn",
       "allow": [
-        { "cmd": "python", "args": true },
-        { "name": "binaries/kokoro", "sidecar": true },
-        { "path": ".sidecar-venv/Scripts/python.exe", "args": true },
-        { "path": ".sidecar-venv/bin/python", "args": true }
+        { "name": "python", "cmd": "python", "args": true },
+        { "name": "kokoro-sidecar", "cmd": "binaries/kokoro", "sidecar": true },
+        { "name": "venv-python-win", "cmd": ".sidecar-venv/Scripts/python.exe", "args": true },
+        { "name": "venv-python-unix", "cmd": ".sidecar-venv/bin/python", "args": true }
       ]
     }
   ]
