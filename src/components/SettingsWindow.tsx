@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import { register, unregister, isRegistered } from "@tauri-apps/plugin-global-shortcut";
-
+import { invoke } from "@tauri-apps/api/core";
 // ─── Kokoro voice presets ──────────────────────────────────────────────────
 const VOICE_PRESETS = [
   "af_alloy",
@@ -50,10 +50,25 @@ export default function SettingsWindow() {
   const [shortcutEnabled, setShortcutEnabled] = useState(true);
   const [recording, setRecording] = useState(false);
   const [saved, setSaved] = useState(false);
+  
+  const [devices, setDevices] = useState<{id: number, name: string}[]>([]);
+  const [currentDevice, setCurrentDevice] = useState<number>(0);
 
   // ── Load settings ──
   useEffect(() => {
     (async () => {
+      // 1. Fetch sidecar audio devices
+      try {
+        const devRes = await invoke<any>("get_audio_devices");
+        if (devRes && devRes.devices) {
+          setDevices(devRes.devices);
+          setCurrentDevice(devRes.current ?? 0);
+        }
+      } catch (e) {
+        console.error("[Kokoro UI] Failed to get audio devices:", e);
+      }
+
+      // 2. Fetch local store settings
       const store = await load("settings.json", { defaults: {}, autoSave: true });
       const v = await store.get<string>("voice");
       if (v) setVoice(v);
@@ -118,14 +133,14 @@ export default function SettingsWindow() {
   }, [recording]);
 
   return (
-    <div className="h-full glass-settings text-white">
+    <div className="h-full surface-low text-white">
       {/* Title bar */}
       <div
-        className="flex items-center justify-between px-5 py-3 border-b border-white/5"
+        className="flex items-center justify-between px-5 py-3 border-b border-white/5 bg-white/5"
         data-tauri-drag-region
       >
-        <h1 className="text-sm font-semibold tracking-wide text-white/80">
-          ⚙ Settings
+        <h1 className="text-xs font-bold uppercase tracking-[0.1em] text-white/60">
+          Settings
         </h1>
       </div>
 
@@ -140,18 +155,62 @@ export default function SettingsWindow() {
             onChange={(e) => setVoice(e.target.value)}
             className="
               w-full px-4 py-2.5 rounded-xl
-              bg-white/5 border border-white/10
+              bg-[#2D2D2D] border border-white/10
               text-sm text-white/90
-              focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/30
+              focus:outline-none focus:border-[#8AB4F8]/50
               transition-smooth cursor-pointer
             "
           >
             {VOICE_PRESETS.map((v) => (
-              <option key={v} value={v} className="bg-gray-900">
+              <option key={v} value={v} className="bg-[#2D2D2D]">
                 {v.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())}
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Audio Output Device */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-white/50 uppercase tracking-wider">
+            Audio Output
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={currentDevice}
+              onChange={async (e) => {
+                const id = parseInt(e.target.value);
+                setCurrentDevice(id);
+                // Directly tell sidecar to switch device
+                await invoke("set_audio_device", { id }).catch(console.error);
+              }}
+              className="
+                flex-1 px-4 py-2.5 rounded-xl
+                bg-[#2D2D2D] border border-white/10
+                text-sm text-white/90
+                focus:outline-none focus:border-[#8AB4F8]/50
+                transition-smooth cursor-pointer
+              "
+            >
+              {devices.length === 0 && <option value={0}>Default System Device</option>}
+              {devices.map((d) => (
+                <option key={d.id} value={d.id} className="bg-[#2D2D2D]">
+                  {d.name.substring(0, 40) + (d.name.length > 40 ? "..." : "")}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => invoke("test_audio")}
+              title="Play a test beep"
+              className="
+                px-5 py-2.5 rounded-xl text-xs font-semibold
+                bg-white/5 border border-white/10
+                hover:bg-white/10 transition-smooth
+                text-white/60 hover:text-[#8AB4F8]
+              "
+            >
+              Test
+            </button>
+          </div>
         </div>
 
         {/* Global Shortcut */}
@@ -166,12 +225,12 @@ export default function SettingsWindow() {
               onKeyDown={handleKeyRecord}
               onBlur={() => setRecording(false)}
               className={`
-                flex-1 px-4 py-2.5 rounded-xl text-sm
+                flex-1 px-4 py-2.5 rounded-xl text-sm font-medium
                 border transition-smooth cursor-pointer
                 ${
                   recording
-                    ? "border-indigo-500 bg-indigo-500/10 text-indigo-300"
-                    : "border-white/10 bg-white/5 text-white/90"
+                    ? "border-[#8AB4F8] bg-[#1C2B41] text-[#D3E3FD]"
+                    : "border-white/10 bg-[#2D2D2D] text-white/90"
                 }
               `}
             >
@@ -183,7 +242,7 @@ export default function SettingsWindow() {
                 setRecording(false);
               }}
               className="
-                px-3 py-2.5 rounded-xl text-xs font-medium
+                px-4 py-2.5 rounded-xl text-xs font-semibold
                 bg-white/5 border border-white/10
                 hover:bg-white/10 transition-smooth
                 text-white/60 hover:text-white/90
@@ -200,15 +259,15 @@ export default function SettingsWindow() {
           <button
             onClick={() => setShortcutEnabled(!shortcutEnabled)}
             className={`
-              w-11 h-6 rounded-full transition-smooth relative
-              ${shortcutEnabled ? "bg-indigo-500" : "bg-white/10"}
+              w-10 h-5 rounded-full transition-smooth relative
+              ${shortcutEnabled ? "bg-[#8AB4F8]" : "bg-white/10"}
             `}
           >
             <span
               className={`
-                absolute top-0.5 w-5 h-5 rounded-full bg-white shadow
+                absolute top-0.5 w-4 h-4 rounded-full shadow-sm
                 transition-smooth
-                ${shortcutEnabled ? "left-5.5" : "left-0.5"}
+                ${shortcutEnabled ? "left-5.5 bg-[#202124]" : "left-0.5 bg-white/40"}
               `}
             />
           </button>
@@ -218,16 +277,16 @@ export default function SettingsWindow() {
         <button
           onClick={handleSave}
           className={`
-            w-full py-3 rounded-xl font-medium text-sm
-            transition-smooth
+            w-full py-3.5 rounded-full font-bold text-sm tracking-wide
+            transition-smooth shadow-lg
             ${
               saved
                 ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                : "bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white shadow-lg shadow-indigo-500/20"
+                : "bg-[#8AB4F8] hover:bg-[#AECBFA] text-[#202124] active:scale-[0.98]"
             }
           `}
         >
-          {saved ? "✓ Saved" : "Save Settings"}
+          {saved ? "✓ Saved" : "Save Changes"}
         </button>
       </div>
     </div>

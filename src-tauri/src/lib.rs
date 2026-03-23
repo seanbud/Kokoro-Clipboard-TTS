@@ -57,6 +57,45 @@ async fn stop_tts() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn get_audio_devices() -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let res = client
+        .get("http://127.0.0.1:8787/devices")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get devices: {e}"))?;
+        
+    let json: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+    Ok(json)
+}
+
+#[tauri::command]
+async fn set_audio_device(id: i32) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let payload = serde_json::json!({ "id": id });
+    let res = client
+        .post("http://127.0.0.1:8787/devices")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to set device: {e}"))?;
+        
+    let json: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
+    Ok(json)
+}
+
+#[tauri::command]
+async fn test_audio() -> Result<String, String> {
+    let client = reqwest::Client::new();
+    client
+        .post("http://127.0.0.1:8787/test_audio")
+        .send()
+        .await
+        .map_err(|e| format!("Audio test failed: {e}"))?;
+    Ok("playing".into())
+}
+
+#[tauri::command]
 async fn move_reader_window(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("reader") {
         win.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
@@ -177,6 +216,9 @@ pub fn run() {
             stop_tts,
             move_reader_window,
             hide_reader_window,
+            get_audio_devices,
+            set_audio_device,
+            test_audio,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

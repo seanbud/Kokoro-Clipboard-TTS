@@ -1,8 +1,15 @@
 import os
 import sys
+import builtins
 import threading
 import argparse
 from flask import Flask, request, jsonify
+
+# Force unbuffered output so Windows doesn't swallow logs until the buffer fills
+def print(*args, **kwargs):
+    kwargs.setdefault('flush', True)
+    builtins.print(*args, **kwargs)
+
 import sounddevice as sd
 import numpy as np
 
@@ -72,6 +79,64 @@ def stop():
     stop_event.set()
     sd.stop()
     return jsonify({"status": "stopped"})
+
+@app.route("/devices", methods=["GET"])
+def get_devices():
+    try:
+        devices = sd.query_devices()
+        outputs = []
+        for d in devices:
+            if d['max_output_channels'] > 0:
+                outputs.append({"id": d['index'], "name": d['name']})
+        
+        # In dict form, sd.default.device is a tuple: (input_device_id, output_device_id)
+        current_out = sd.default.device[1]
+        
+        # If current_out is a valid list matching an index, fallback
+        if current_out is None and len(outputs) > 0:
+            current_out = outputs[0]['id']
+            
+        return jsonify({"devices": outputs, "current": current_out})
+    except Exception as e:
+        print(f"[Sidecar] Error fetching devices: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/devices", methods=["POST"])
+def set_device():
+    data = request.json
+    device_id = data.get("id")
+    if device_id is not None:
+        try:
+            # sd.default.device is (input, output)
+            sd.default.device = (sd.default.device[0], int(device_id))
+            print(f"[Sidecar] Set audio output device to {device_id}")
+            return jsonify({"status": "ok", "current": device_id})
+        except Exception as e:
+            print(f"[Sidecar] Error setting device: {e}")
+            return jsonify({"error": str(e)}), 400
+    return jsonify({"error": "No device id provided"}), 400
+
+@app.route("/test_audio", methods=["POST"])
+def test_audio():
+    print("[Sidecar] Playing test audio beep...")
+    try:
+        fs = 44100
+        duration = 0.5
+        # Generate a nice soft 440Hz sine wave (A4 note)
+        t = np.linspace(0, duration, int(fs * duration), False)
+        # Apply a simple envelope so it doesn't click sharply
+        envelope = np.concatenate([
+            np.linspace(0, 1, int(fs * 0.05)),
+            np.ones(int(fs * 0.4)),
+            np.linspace(1, 0, int(fs * 0.05))
+        ])
+        note = np.sin(440 * t * 2 * np.pi) * 0.1 * envelope
+        sd.play(note, fs)
+        # we don't block here, let it play asynchronously
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        print(f"[Sidecar] Test audio error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/health", methods=["GET"])
 def health():
