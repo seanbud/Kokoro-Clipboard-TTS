@@ -89,7 +89,7 @@ def tts():
     stop_event.clear()
     
     def play_audio():
-        print("[Sidecar] Playback started")
+        print("[STATUS] START")
         try:
             generator = p(text, voice=voice, speed=speed)
             for i, (gs, ps, audio) in enumerate(generator):
@@ -104,19 +104,20 @@ def tts():
                 # Stats for debugging silence
                 max_val = float(np.max(np.abs(played_audio)))
                 rms = float(np.sqrt(np.mean(played_audio**2)))
+                # The "Chunk 0" is the trigger for "Speaking" status
                 print(f"[Sidecar] Chunk {i} | Len: {len(played_audio)} | Max: {max_val:.4f} | RMS: {rms:.4f} | Type: {played_audio.dtype}")
                 
                 try:
                     sd.play(played_audio, samplerate=24000)
                     sd.wait()
                 except Exception as playback_err:
-                    print(f"[Sidecar] PLAYBACK ERROR on chunk {i}: {playback_err}")
+                    print(f"[STATUS] ERROR: {playback_err}")
         except Exception as e:
-            print(f"[Sidecar] ERROR in main loop: {e}")
+            print(f"[STATUS] ERROR: {e}")
             import traceback
             traceback.print_exc()
             
-        print("[Sidecar] Playback thread finished")
+        print("[STATUS] FINISHED")
 
     threading.Thread(target=play_audio, daemon=True).start()
     

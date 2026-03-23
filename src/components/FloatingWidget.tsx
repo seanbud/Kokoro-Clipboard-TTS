@@ -7,8 +7,9 @@ import { error } from "@tauri-apps/plugin-log";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { cleanTextForTTS } from "../utils/textCleaner";
 
-// ─── Speed Notches (Reworked as requested) ──────────────────────────────────
-const SPEED_NOTCHES = [1.0, 1.1, 1.2, 1.3] as const;
+// ─── Speed Notches (Expanded as requested) ──────────────────────────────────
+const SPEED_NOTCHES = [0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3] as const;
+const DEFAULT_SPEED_INDEX = 4; // 1.0x
 
 // ─── Icons ──────────────────────────────────────────────────────────────────
 const PlayIcon = () => (
@@ -24,7 +25,7 @@ const PauseIcon = () => (
 );
 
 const StopIcon = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-white/40">
     <path d="M6 6h12v12H6z" />
   </svg>
 );
@@ -35,11 +36,11 @@ const CloseIcon = () => (
   </svg>
 );
 
-type Status = "Idle" | "Processing" | "Speaking";
+type Status = "Idle" | "Generating" | "Speaking" | "TTS Error";
 
 export default function FloatingWidget() {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [speedIndex, setSpeedIndex] = useState(0); // 1.0x default
+  const [speedIndex, setSpeedIndex] = useState(DEFAULT_SPEED_INDEX);
   const [status, setStatus] = useState<Status>("Idle");
   const storeRef = useRef<Awaited<ReturnType<typeof load>> | null>(null);
 
@@ -51,21 +52,41 @@ export default function FloatingWidget() {
     getCurrentWebviewWindow().startDragging();
   };
 
-  // ── Load persisted speed on mount ──
+  // ── Load persisted speed ──
   useEffect(() => {
     (async () => {
-      const store = await load("settings.json", { defaults: { "tts-speed-index": 0 }, autoSave: true });
+      const store = await load("settings.json", { defaults: { "tts-speed-index": DEFAULT_SPEED_INDEX }, autoSave: true });
       storeRef.current = store;
       const saved = await store.get<number>("tts-speed-index");
       if (typeof saved === 'number' && saved >= 0 && saved < SPEED_NOTCHES.length) {
         setSpeedIndex(saved);
       } else {
-        setSpeedIndex(0);
+        setSpeedIndex(DEFAULT_SPEED_INDEX);
       }
     })();
   }, []);
 
-  // ── Persist speed whenever it changes ──
+  // ── Listen for Sidecar Events ──
+  useEffect(() => {
+    const unlistenSpeaking = listen("tts-speaking", () => setStatus("Speaking"));
+    const unlistenFinished = listen("tts-finished", () => {
+      setStatus("Idle");
+      setIsPlaying(false);
+    });
+    const unlistenError = listen<string>("tts-error", (event) => {
+      console.error("[Kokoro UI] Sidecar error:", event.payload);
+      setStatus("TTS Error");
+      setIsPlaying(false);
+    });
+
+    return () => {
+      unlistenSpeaking.then(fn => fn());
+      unlistenFinished.then(fn => fn());
+      unlistenError.then(fn => fn());
+    };
+  }, []);
+
+  // ── Persist speed ──
   useEffect(() => {
     storeRef.current?.set("tts-speed-index", speedIndex);
   }, [speedIndex]);
@@ -73,27 +94,24 @@ export default function FloatingWidget() {
   // ── TTS Logic ──
   const runTTS = async (text: string) => {
     try {
-      setStatus("Processing");
+      setStatus("Generating");
       setIsPlaying(true);
       
       const store = storeRef.current || await load("settings.json", { defaults: {}, autoSave: true });
       const voice = (await store.get<string>("voice")) || "am_fenrir";
       const volume = (await store.get<number>("volume")) ?? 1.0;
 
-      const res = await invoke<string>("send_to_tts", { 
+      await invoke("send_to_tts", { 
         text, 
         speed: speed, 
         voice: voice,
         volume: volume 
       });
-
-      if (res === "ok") {
-        setStatus("Speaking");
-      }
+      // status remains "Generating" until "tts-speaking" event arrives
     } catch (err) {
-      error(`[Kokoro UI] TTS error: ${err}`);
+      error(`[Kokoro UI] Invoke error: ${err}`);
       setIsPlaying(false);
-      setStatus("Idle");
+      setStatus("TTS Error");
     }
   };
 
@@ -135,7 +153,8 @@ export default function FloatingWidget() {
 
   // ── Play / Pause ──
   const handlePlayPause = useCallback(async () => {
-    if (isPlaying) {
+    if (isPlaying && status === "Speaking") {
+      // If actually speaking, pause/stop it
       await invoke("stop_tts").catch((err) => error(String(err)));
       setIsPlaying(false);
       setStatus("Idle");
@@ -144,7 +163,7 @@ export default function FloatingWidget() {
         await runTTS(lastAnalyzedText.current);
       }
     }
-  }, [isPlaying, speed]);
+  }, [isPlaying, status, speed]);
 
   // ── Stop ──
   const handleStop = useCallback(async () => {
@@ -159,9 +178,11 @@ export default function FloatingWidget() {
     await invoke("hide_reader_window").catch((err) => error(String(err)));
   }, [handleStop]);
 
-  const statusColor = status === 'Speaking' ? 'text-green-400' : 
-    status === 'Processing' ? 'text-yellow-400 animate-pulse' : 
-    'text-white/40';
+  const statusColor = 
+    status === 'Speaking' ? 'text-[#8AB4F8]' : 
+    status === 'Generating' ? 'text-yellow-400' : 
+    status === 'TTS Error' ? 'text-red-400' : 
+    'text-white/20';
 
   return (
     <div className="h-full flex items-center justify-center p-1 select-none" onMouseDown={handleDrag}>
@@ -183,9 +204,24 @@ export default function FloatingWidget() {
           {isPlaying ? <PauseIcon /> : <PlayIcon />}
         </button>
 
-        {/* Status Indicator */}
-        <div className="flex flex-col px-1 min-w-[50px] pointer-events-none">
-          <span className="text-[9px] font-bold text-white/20 uppercase tracking-widest leading-none mb-0.5">
+        {/* Stop Button */}
+        <button
+          onClick={handleStop}
+          onMouseDown={(e) => e.stopPropagation()}
+          title="Stop & Reset"
+          className="
+            w-8 h-8 rounded-full flex items-center justify-center
+            bg-white/5 hover:bg-white/10
+            active:scale-95 transition-smooth
+            cursor-default border border-white/5
+          "
+        >
+          <StopIcon />
+        </button>
+
+        {/* Status Hub */}
+        <div className="flex flex-col px-1 min-w-[64px] pointer-events-none">
+          <span className={`text-[8px] font-black uppercase tracking-[0.15em] leading-none transition-smooth ${statusColor}`}>
             {status}
           </span>
         </div>
@@ -195,20 +231,20 @@ export default function FloatingWidget() {
           onClick={() => cycleSpeed(1)}
           onWheel={handleWheel}
           onMouseDown={(e) => e.stopPropagation()}
-          title={`Speed: ${speed}x`}
+          title={`Speed: ${speed}x (Scroll or click)`}
           className="
-            min-w-[40px] h-10 px-2 rounded-full flex items-center justify-center
+            min-w-[42px] h-10 px-2 rounded-full flex items-center justify-center
             bg-white/5 hover:bg-white/10
             active:scale-95 transition-smooth
-            text-[12px] font-semibold text-white/80
+            text-[11px] font-bold text-white/90
             tabular-nums cursor-default
             border border-white/5
           "
         >
-          {speed}x
+          {speed.toFixed(1)}x
         </button>
 
-        {/* Close Button (X) */}
+        {/* Close */}
         <button
           onClick={handleClose}
           onMouseDown={(e) => e.stopPropagation()}

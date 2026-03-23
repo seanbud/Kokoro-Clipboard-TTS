@@ -1,4 +1,4 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
 
 /// Manages the lifecycle of the Kokoro TTS sidecar process.
@@ -112,21 +112,33 @@ impl SidecarManager {
             sidecar.spawn().map_err(|e| format!("Failed to spawn sidecar binary: {e}"))?
         };
 
+        let handle_for_stdout = app.clone();
         tauri::async_runtime::spawn(async move {
             use tauri_plugin_shell::process::CommandEvent;
             while let Some(event) = rx.recv().await {
                 match event {
                     CommandEvent::Stdout(line) => {
-                        print!("{}", String::from_utf8_lossy(&line));
+                        let line_str = String::from_utf8_lossy(&line);
+                        // Emit events based on sidecar logs for the frontend
+                        if line_str.contains("Chunk 0") {
+                            let _ = handle_for_stdout.emit("tts-speaking", ());
+                        } else if line_str.contains("[STATUS] FINISHED") {
+                            let _ = handle_for_stdout.emit("tts-finished", ());
+                        } else if line_str.contains("[STATUS] ERROR") {
+                            let _ = handle_for_stdout.emit("tts-error", line_str.replace("[STATUS] ERROR:", "").trim());
+                        }
+                        print!("{}", line_str);
                     }
                     CommandEvent::Stderr(line) => {
                         eprint!("{}", String::from_utf8_lossy(&line));
                     }
                     CommandEvent::Terminated(payload) => {
                         println!("[Kokoro] Sidecar terminated with payload: {:?}", payload);
+                        let _ = handle_for_stdout.emit("tts-finished", ());
                     }
                     CommandEvent::Error(err) => {
                         eprintln!("[Kokoro] Sidecar event error: {}", err);
+                        let _ = handle_for_stdout.emit("tts-error", err.to_string());
                     }
                     _ => {}
                 }
