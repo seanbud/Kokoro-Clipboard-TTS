@@ -24,7 +24,8 @@ def run():
             "--onefile", 
             "--name", "kokoro",
             "--collect-all", "onnxruntime",
-            "sidecar/main.py"
+            "--collect-all", "kokoro",
+            "sidecar/kokoro_server.py"
         ])
     except Exception as e:
         print(f"Error building with PyInstaller: {e}")

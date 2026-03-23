@@ -1,0 +1,6 @@
+flask
+sounddevice
+numpy
+kokoro>=0.6.0
+onnxruntime
+pyinstaller
