@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python & PyInstaller
+.sidecar-venv/
+__pycache__/
+build/
+*.spec
