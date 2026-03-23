@@ -88,12 +88,13 @@ def tts():
                     print("[Sidecar] Playback interrupted")
                     break
                 
-                # Apply volume and ensure float32 for sounddevice
-                played_audio = (audio * volume).astype(np.float32)
+                # audio is a PyTorch Tensor from Kokoro. 
+                # Convert to NumPy for sounddevice processing.
+                played_audio = (audio * volume).cpu().numpy().astype(np.float32)
                 
                 # Stats for debugging silence
-                max_val = np.max(np.abs(played_audio))
-                rms = np.sqrt(np.mean(played_audio**2))
+                max_val = float(np.max(np.abs(played_audio)))
+                rms = float(np.sqrt(np.mean(played_audio**2)))
                 print(f"[Sidecar] Chunk {i} | Len: {len(played_audio)} | Max: {max_val:.4f} | RMS: {rms:.4f} | Type: {played_audio.dtype}")
                 
                 try:
