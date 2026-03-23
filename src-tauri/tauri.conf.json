@@ -46,12 +46,6 @@
         "decorations": false
       }
     ],
-    "trayIcon": {
-      "id": "main-tray",
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true,
-      "tooltip": "Kokoro Clipboard TTS"
-    },
     "security": {
       "csp": null
     }
