@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
+    tray::TrayIcon,
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
 };
 
@@ -13,6 +13,7 @@ use sidecar::SidecarManager;
 /// State shared across the application.
 pub struct AppState {
     pub sidecar: Mutex<SidecarManager>,
+    pub tray: Mutex<Option<TrayIcon>>,
 }
 
 // ─── Tauri Commands ───────────────────────────────────────────────────────────
@@ -91,8 +92,10 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
         &[&settings_item, &updates_item, &tutorial_item, &quit_item],
     )?;
 
-    let _tray = TrayIconBuilder::with_id("main-tray")
+    let tray = tauri::tray::TrayIconBuilder::with_id("main-tray")
         .menu(&menu)
+        .show_menu_on_left_click(true)
+        .tooltip("Kokoro Clipboard TTS")
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "settings" => {
                 if let Some(win) = app.get_webview_window("settings") {
@@ -125,7 +128,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                         WebviewUrl::App("/".into()),
                     )
                     .title("Welcome to Kokoro TTS")
-                    .inner_size(440.0, 360.0)
+                    .inner_size(480.0, 420.0)
                     .resizable(false)
                     .center()
                     .decorations(false)
@@ -142,9 +145,12 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
             }
             _ => {}
         })
-        .tooltip("Kokoro Clipboard TTS")
-        .show_menu_on_left_click(true)
         .build(app)?;
+
+    if let Some(state) = app.try_state::<AppState>() {
+        let mut t = state.tray.lock().unwrap();
+        *t = Some(tray);
+    }
 
     Ok(())
 }
@@ -162,6 +168,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
             sidecar: Mutex::new(SidecarManager::new()),
+            tray: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             send_to_tts,
