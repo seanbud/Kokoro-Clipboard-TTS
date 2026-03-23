@@ -5,6 +5,7 @@ use tauri::{
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
 };
 
+
 mod sidecar;
 
 use sidecar::SidecarManager;
@@ -141,6 +142,8 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
             }
             _ => {}
         })
+        .tooltip("Kokoro Clipboard TTS")
+        .show_menu_on_left_click(true)
         .build(app)?;
 
     Ok(())
@@ -152,7 +155,6 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
@@ -184,9 +186,22 @@ pub fn run() {
             setup_tray(&handle)?;
 
             // ── Register default global shortcut ──
-            // The shortcut trigger is handled on the frontend via the JS plugin API
-            // so the frontend can read clipboard + position the reader window.
-            // We emit an event that the frontend listens to.
+            use tauri_plugin_global_shortcut::GlobalShortcutExt;
+            let shortcut = "super+shift+q";
+            let handle_for_shortcut = handle.clone();
+            app.handle().plugin(
+                tauri_plugin_global_shortcut::Builder::new()
+                    .with_handler(move |_app, _shortcut, event| {
+                        if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                            let _ = handle_for_shortcut.emit("shortcut-triggered", ());
+                        }
+                    })
+                    .build(),
+            )?;
+            app.global_shortcut().register(shortcut).map_err(|e| {
+                eprintln!("[Kokoro] Failed to register shortcut: {e}");
+                e
+            }).ok();
 
             Ok(())
         });

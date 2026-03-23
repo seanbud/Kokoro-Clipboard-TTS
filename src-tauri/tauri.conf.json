@@ -40,7 +40,7 @@
         "url": "/",
         "width": 440,
         "height": 360,
-        "visible": false,
+        "visible": true,
         "resizable": false,
         "center": true,
         "decorations": false
