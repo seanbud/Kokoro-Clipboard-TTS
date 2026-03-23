@@ -45,22 +45,49 @@ impl SidecarManager {
         let (mut rx, child) = if cfg!(debug_assertions) {
             println!("[Kokoro] DEBUG MODE: Spawning sidecar from source using venv...");
             
-            // Resolve project root (one level up from src-tauri)
-            let project_root = app.path().resource_dir().unwrap()
-                .parent().unwrap().to_path_buf();
+            // Resolve project root robustly
+            let mut project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
             
+            // If we are currently in src-tauri, go up one level
+            if project_root.ends_with("src-tauri") {
+                project_root = project_root.parent().unwrap().to_path_buf();
+            }
+
             #[cfg(target_os = "windows")]
-            let python_path = project_root.join(".sidecar-venv").join("Scripts").join("python.exe");
+            let mut python_path = project_root.join(".sidecar-venv").join("Scripts").join("python.exe");
             #[cfg(not(target_os = "windows"))]
-            let python_path = project_root.join(".sidecar-venv").join("bin").join("python");
+            let mut python_path = project_root.join(".sidecar-venv").join("bin").join("python");
             
             let script_path = project_root.join("sidecar").join("kokoro_server.py");
 
+            // If not found at current_dir, try a few levels up (sometimes dev runners change CWD)
+            if !python_path.exists() {
+               if let Ok(exe_path) = std::env::current_exe() {
+                   let mut p = exe_path.clone();
+                   // Try to find the root by looking for .sidecar-venv
+                   for _ in 0..10 {
+                       if p.join(".sidecar-venv").exists() {
+                           project_root = p;
+                           #[cfg(target_os = "windows")]
+                           python_path = project_root.join(".sidecar-venv").join("Scripts").join("python.exe");
+                           #[cfg(not(target_os = "windows"))]
+                           python_path = project_root.join(".sidecar-venv").join("bin").join("python");
+                           break;
+                       }
+                       if let Some(parent) = p.parent() {
+                           p = parent.to_path_buf();
+                       } else {
+                           break;
+                       }
+                   }
+               }
+            }
+
+            println!("[Kokoro] Final Project Root: {:?}", project_root);
             println!("[Kokoro] Venv Python: {:?}", python_path);
-            println!("[Kokoro] Script path: {:?}", script_path);
 
             if !python_path.exists() {
-                return Err(format!("Python venv not found at {:?}", python_path));
+                return Err(format!("Python venv not found. Tried looking in {:?} and path {:?}", project_root, python_path));
             }
 
             let cmd = app.shell().command(python_path.to_string_lossy().to_string())
