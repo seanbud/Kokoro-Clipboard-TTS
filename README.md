@@ -1,6 +1,10 @@
 # 🎙️ Kokoro Clipboard TTS
 
 <div align="center">
+  <img src="public/icon.png" width="128" alt="Kokoro Clipboard TTS Logo">
+</div>
+
+<div align="center">
 
 A lightweight, cross-platform desktop app that reads your clipboard aloud using **Kokoro-82M** — a blazing-fast, local AI text-to-speech model.
 
@@ -36,78 +40,21 @@ A lightweight, cross-platform desktop app that reads your clipboard aloud using 
 
 ---
 
-## 🛠 Development Setup
+## 🛠 Development & Contributing
 
-### Prerequisites
+Want to build from source, modify the Python AI sidecar, or understand the automated CI/CD pipeline? 
 
-- **Node.js** 20+ and **npm**
-- **Rust** (stable)
-- **Python 3.10+** (for sidecar development)
-
-### Clone & Install
-
-```bash
-git clone https://github.com/seanbud/Kokoro-Clipboard-TTS.git
-cd Kokoro-Clipboard-TTS
-npm install
-```
-
-### Run in Development
-
-```bash
-# 1. Build the sidecar once for your platform
-# Windows
-pyinstaller --onefile --name kokoro --add-data "sidecar/model;model" sidecar/kokoro_server.py
-mv dist/kokoro.exe src-tauri/binaries/kokoro-x86_64-pc-windows-msvc.exe
-
-# 2. Run Tauri dev
-npm run tauri dev
-```
-
----
-
-## 🐍 CI/CD Automation
-
-The GitHub Actions workflow (`release.yml`) automatically:
-1. Sets up a Python environment.
-2. Downloads the **Kokoro-82M** ONNX model and voice weights.
-3. Bundles them into a standalone sidecar binary using **PyInstaller**.
-4. Packages everything into the final Tauri installer.
-
+Please check out our **[Contributing Guide](.agent/CONTRIBUTING.md)** for full development setup instructions.
 
 ---
 
 ## 🏗 Architecture
 
-```
-┌──────────────────────────────────────────────────┐
-│                    Tauri Shell                    │
-│                                                  │
-│  ┌──────────┐  ┌────────────┐  ┌──────────────┐ │
-│  │  Reader   │  │  Settings  │  │   Tutorial   │ │
-│  │  Window   │  │  Window    │  │   Window     │ │
-│  │(frameless)│  │            │  │              │ │
-│  └─────┬─────┘  └─────┬──────┘  └──────┬───────┘ │
-│        │               │               │         │
-│  ┌─────┴───────────────┴───────────────┴──────┐  │
-│  │             React Frontend                  │  │
-│  │   App.tsx → routes by window.label          │  │
-│  └──────────────────┬──────────────────────────┘  │
-│                     │  invoke()                   │
-│  ┌──────────────────┴──────────────────────────┐  │
-│  │             Rust Backend (lib.rs)           │  │
-│  │  • Sidecar Manager (spawn/kill)             │  │
-│  │  • System Tray                              │  │
-│  │  • Global Shortcut registration             │  │
-│  │  • TTS HTTP commands (reqwest)              │  │
-│  └──────────────────┬──────────────────────────┘  │
-│                     │  HTTP :8787                  │
-│  ┌──────────────────┴──────────────────────────┐  │
-│  │        Kokoro TTS Sidecar (Python)          │  │
-│  │  PyInstaller exe · Flask server · Kokoro-82M│  │
-│  └─────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────┘
-```
+<div align="center">
+  <img src="public/architecture.png" alt="Kokoro Clipboard TTS Architecture Diagram">
+</div>
+
+*The React frontend communicates via Tauri with the Rust backend, which securely manages a headless local Python server running the Kokoro TTS engine.*
 
 ---
 
