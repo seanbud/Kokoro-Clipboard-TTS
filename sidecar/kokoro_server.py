@@ -170,8 +170,9 @@ def health():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=8787)
+    parser.add_argument("--port", type=int, default=8790)
     args = parser.parse_args()
     
     print(f"[Sidecar] Starting Kokoro TTS server on port {args.port}")
-    app.run(host="127.0.0.1", port=args.port)
+    # Use threaded=True to ensure one hanging request doesn't block the whole server
+    app.run(host="127.0.0.1", port=args.port, threaded=True)

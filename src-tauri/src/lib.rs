@@ -34,7 +34,7 @@ async fn send_to_tts(
     });
 
     let res = client
-        .post("http://127.0.0.1:8787/tts")
+        .post("http://127.0.0.1:8790/tts")
         .json(&payload)
         .send()
         .await
@@ -51,7 +51,7 @@ async fn send_to_tts(
 async fn stop_tts() -> Result<String, String> {
     let client = reqwest::Client::new();
     client
-        .post("http://127.0.0.1:8787/stop")
+        .post("http://127.0.0.1:8790/stop")
         .send()
         .await
         .map_err(|e| format!("Stop request failed: {e}"))?;
@@ -62,7 +62,7 @@ async fn stop_tts() -> Result<String, String> {
 async fn get_audio_devices() -> Result<serde_json::Value, String> {
     let client = reqwest::Client::new();
     let res = client
-        .get("http://127.0.0.1:8787/devices")
+        .get("http://127.0.0.1:8790/devices")
         .send()
         .await
         .map_err(|e| format!("Failed to get devices: {e}"))?;
@@ -76,7 +76,7 @@ async fn set_audio_device(id: i32) -> Result<serde_json::Value, String> {
     let client = reqwest::Client::new();
     let payload = serde_json::json!({ "id": id });
     let res = client
-        .post("http://127.0.0.1:8787/devices")
+        .post("http://127.0.0.1:8790/devices")
         .json(&payload)
         .send()
         .await
@@ -91,7 +91,7 @@ async fn test_audio(volume: f32) -> Result<String, String> {
     let client = reqwest::Client::new();
     let payload = serde_json::json!({ "volume": volume });
     client
-        .post("http://127.0.0.1:8787/test_audio")
+        .post("http://127.0.0.1:8790/test_audio")
         .json(&payload)
         .send()
         .await
