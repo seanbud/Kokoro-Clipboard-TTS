@@ -31,8 +31,29 @@ impl SidecarManager {
             .sidecar("kokoro")
             .map_err(|e| format!("Failed to create sidecar command: {e}"))?;
 
-        let (mut _rx, child) = sidecar.spawn()
+        let (mut rx, child) = sidecar.spawn()
             .map_err(|e| format!("Failed to spawn sidecar: {e}"))?;
+
+        tauri::async_runtime::spawn(async move {
+            use tauri_plugin_shell::process::CommandEvent;
+            while let Some(event) = rx.recv().await {
+                match event {
+                    CommandEvent::Stdout(line) => {
+                        print!("{}", String::from_utf8_lossy(&line));
+                    }
+                    CommandEvent::Stderr(line) => {
+                        eprint!("{}", String::from_utf8_lossy(&line));
+                    }
+                    CommandEvent::Terminated(payload) => {
+                        println!("[Kokoro] Sidecar terminated with payload: {:?}", payload);
+                    }
+                    CommandEvent::Error(err) => {
+                        eprintln!("[Kokoro] Sidecar event error: {}", err);
+                    }
+                    _ => {}
+                }
+            }
+        });
 
         println!("[Kokoro] Sidecar spawned successfully");
 
