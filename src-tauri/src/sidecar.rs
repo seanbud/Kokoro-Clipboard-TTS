@@ -25,6 +25,19 @@ impl SidecarManager {
             return Ok(());
         }
 
+        // On Windows, if the developer forcefully stops the Tauri dev server (Ctrl+C),
+        // the Rust app dies instantly without running its Exit handler, leaving the sidecar
+        // orphaned in the background locking files and ports. Let's kill any ghosts first.
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/F", "/IM", "kokoro-x86_64-pc-windows-msvc.exe", "/T"])
+                .output();
+            let _ = std::process::Command::new("taskkill")
+                .args(["/F", "/IM", "kokoro.exe", "/T"])
+                .output();
+        }
+
         println!("[Kokoro] Attempting to spawn sidecar: kokoro");
         
         let sidecar = app.shell()
