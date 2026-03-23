@@ -1,8 +1,8 @@
-const sharp = require('sharp');
+import sharp from 'sharp';
 
 async function scaleIcon() {
   try {
-    await sharp('C:/Users/Sean/Downloads/sheba_yell.png')
+    await sharp('C:/Users/Sean/Downloads/shiba_yell.png')
       .resize(1024, 1024, {
         kernel: sharp.kernel.nearest
       })
