@@ -30,10 +30,49 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target == 'universal-apple-darwin' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.target == 'universal-apple-darwin' && 'aarch64-apple-darwin,x86_14-apple-darwin' || '' }}
+
+      - name: Install Python dependencies
+        run: |
+          pip install flask sounddevice numpy pyinstaller
+          # Note: kokoro might need specific install steps depending on its lib
+          # pip install kokoro
+
+      - name: Download Kokoro Model Weights
+        shell: bash
+        run: |
+          mkdir -p sidecar/model
+          # Download official Kokoro-82M model weights/voices
+          curl -L -o sidecar/model/kokoro-v0.19.onnx https://github.com/hexgrad/kokoro/raw/main/kokoro-v0.19.onnx
+          curl -L -o sidecar/model/voices.json https://github.com/hexgrad/kokoro/raw/main/voices.json
+
+      - name: Build Sidecar with PyInstaller
+        shell: bash
+        run: |
+          # Use platform-specific separator for --add-data
+          if [ "${{ matrix.platform }}" == "windows-latest" ]; then
+            SEP=";"
+          else
+            SEP=":"
+          fi
+          pyinstaller --onefile --name kokoro --add-data "sidecar/model${SEP}model" sidecar/kokoro_server.py
+          mkdir -p src-tauri/binaries
+          if [ "${{ matrix.platform }}" == "windows-latest" ]; then
+            mv dist/kokoro.exe src-tauri/binaries/kokoro-x86_64-pc-windows-msvc.exe
+          else
+            # For macOS, we produce a single binary for the runner's arch. 
+            # In a real universal build, you'd build for both or lipo them.
+            mv dist/kokoro src-tauri/binaries/kokoro-x86_64-apple-darwin
+            cp src-tauri/binaries/kokoro-x86_64-apple-darwin src-tauri/binaries/kokoro-aarch64-apple-darwin
+          fi
 
       - name: Install frontend dependencies
         run: npm ci

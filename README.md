@@ -26,13 +26,15 @@ A lightweight, cross-platform desktop app that reads your clipboard aloud using 
 
 ## 📦 Installation
 
-### Download a Release
+## 📦 Installation
+
+**Kokoro Clipboard TTS is designed for zero-config easy installation.**
 
 1. Go to the [Releases](https://github.com/seanbud/Kokoro-Clipboard-TTS/releases) page.
 2. Download the installer for your platform:
-   - **Windows**: `.msi` or `.exe` (NSIS) installer
-   - **macOS**: `.dmg` (Universal binary — Apple Silicon + Intel)
-3. Run the installer. The app will appear in your system tray.
+   - **Windows**: `.msi` or `.jsis` installer
+   - **macOS**: `.dmg` (Universal binary)
+3. Run the installer. **That's it!** The AI engine and model weights are bundled inside.
 
 ---
 
@@ -41,11 +43,8 @@ A lightweight, cross-platform desktop app that reads your clipboard aloud using 
 ### Prerequisites
 
 - **Node.js** 20+ and **npm**
-- **Rust** (stable toolchain) — install via [rustup](https://rustup.rs)
-- **Tauri v2 CLI**: comes bundled via `npm run tauri`
-- **Platform SDKs**: 
-  - Windows: Visual Studio Build Tools with C++ workload
-  - macOS: Xcode Command Line Tools
+- **Rust** (stable)
+- **Python 3.10+** (for sidecar development)
 
 ### Clone & Install
 
@@ -58,100 +57,25 @@ npm install
 ### Run in Development
 
 ```bash
+# 1. Build the sidecar once for your platform
+# Windows
+pyinstaller --onefile --name kokoro --add-data "sidecar/model;model" sidecar/kokoro_server.py
+mv dist/kokoro.exe src-tauri/binaries/kokoro-x86_64-pc-windows-msvc.exe
+
+# 2. Run Tauri dev
 npm run tauri dev
-```
-
-The app will launch with hot-reload for the frontend and automatic Rust recompilation.
-
-> **Note:** TTS won't work until you build and place the Kokoro sidecar binary (see below).
-
-### Run Tests
-
-```bash
-# Frontend tests (vitest)
-npx vitest run
-
-# Rust tests
-cd src-tauri && cargo test
 ```
 
 ---
 
-## 🐍 Building the Kokoro Sidecar
+## 🐍 CI/CD Automation
 
-The TTS engine is a Python application bundled as a standalone executable via **PyInstaller**.
+The GitHub Actions workflow (`release.yml`) automatically:
+1. Sets up a Python environment.
+2. Downloads the **Kokoro-82M** ONNX model and voice weights.
+3. Bundles them into a standalone sidecar binary using **PyInstaller**.
+4. Packages everything into the final Tauri installer.
 
-### 1 — Set up the Python environment
-
-```bash
-# Create a virtual environment
-python -m venv kokoro-env
-source kokoro-env/bin/activate  # or kokoro-env\Scripts\activate on Windows
-
-# Install dependencies
-pip install kokoro sounddevice flask pyinstaller
-```
-
-### 2 — Create the server script
-
-The sidecar is a simple Flask HTTP server. Create `kokoro_server.py`:
-
-```python
-from flask import Flask, request, jsonify
-import kokoro
-import sounddevice as sd
-import threading
-
-app = Flask(__name__)
-stop_event = threading.Event()
-
-@app.route("/tts", methods=["POST"])
-def tts():
-    data = request.json
-    text = data.get("text", "")
-    speed = data.get("speed", 1.0)
-    voice = data.get("voice", "am_fenrir")
-    
-    stop_event.clear()
-    # Generate and play audio with kokoro
-    # (Adapt to the actual kokoro API)
-    
-    return jsonify({"status": "ok"})
-
-@app.route("/stop", methods=["POST"])
-def stop():
-    stop_event.set()
-    sd.stop()
-    return jsonify({"status": "stopped"})
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=8787)
-    args = parser.parse_args()
-    app.run(host="127.0.0.1", port=args.port)
-```
-
-### 3 — Bundle with PyInstaller
-
-```bash
-pyinstaller --onefile --name kokoro kokoro_server.py
-```
-
-### 4 — Place the binary
-
-Copy the output to the Tauri sidecar location:
-
-```bash
-# Windows
-copy dist\kokoro.exe src-tauri\binaries\kokoro-x86_64-pc-windows-msvc.exe
-
-# macOS (Universal needs both)
-cp dist/kokoro src-tauri/binaries/kokoro-x86_64-apple-darwin
-cp dist/kokoro src-tauri/binaries/kokoro-aarch64-apple-darwin
-```
-
-> The file naming convention with target triples is required by Tauri's `externalBin` resolver.
 
 ---
 
