@@ -32,6 +32,7 @@ from kokoro import KPipeline
 app = Flask(__name__)
 stop_event = threading.Event()
 pipeline = None
+request_counter = 0
 
 def get_pipeline():
     global pipeline
@@ -74,6 +75,10 @@ cleanup_zombies()
 
 @app.route("/tts", methods=["POST"])
 def tts():
+    # Stop any previous playback immediately
+    stop_event.set()
+    sd.stop()
+    
     p = get_pipeline()
     data = request.json or {}
     text = data.get("text", "")
@@ -86,40 +91,70 @@ def tts():
         
     print(f"[Sidecar] Synthesizing: '{text[:20]}...' (V:{voice}, S:{speed}, Vol:{volume})")
     
+    # Small pause to let previous workers exit gracefully
+    import time
+    time.sleep(0.1)
     stop_event.clear()
     
-    def play_audio():
-        print("[STATUS] START")
+    import queue
+    audio_queue = queue.Queue(maxsize=10)
+
+    def generator_worker():
+        """ Thread that generates audio tensors as fast as possible. """
         try:
             generator = p(text, voice=voice, speed=speed)
             for i, (gs, ps, audio) in enumerate(generator):
                 if stop_event.is_set():
-                    print("[Sidecar] Playback interrupted")
                     break
                 
-                # audio is a PyTorch Tensor from Kokoro. 
-                # Convert to NumPy for sounddevice processing.
+                # Push the raw tensor and its index into the queue
+                audio_queue.put((i, audio))
+                print(f"[Sidecar] Generated chunk {i} (queued)")
+            
+            # Signal end of generation
+            audio_queue.put((None, None))
+        except Exception as e:
+            print(f"[STATUS] ERROR: {e}")
+            import traceback
+            traceback.print_exc()
+            audio_queue.put((None, None))
+
+    def playback_worker():
+        """ Thread that consumes from the queue and plays audio. """
+        print("[STATUS] START")
+        try:
+            while not stop_event.is_set():
+                try:
+                    i, audio = audio_queue.get(timeout=1.0)
+                except queue.Empty:
+                    if stop_event.is_set(): break
+                    continue
+                
+                if i is None: # End of stream
+                    break
+                
+                # Convert to NumPy/float32 and apply volume
                 played_audio = (audio * volume).cpu().numpy().astype(np.float32)
                 
-                # Stats for debugging silence
+                # Print status for frontend parsing
                 max_val = float(np.max(np.abs(played_audio)))
-                rms = float(np.sqrt(np.mean(played_audio**2)))
-                # The "Chunk 0" is the trigger for "Speaking" status
-                print(f"[Sidecar] Chunk {i} | Len: {len(played_audio)} | Max: {max_val:.4f} | RMS: {rms:.4f} | Type: {played_audio.dtype}")
+                print(f"[Sidecar] Chunk {i} | Max: {max_val:.4f} | RMS: {float(np.sqrt(np.mean(played_audio**2))):.4f}")
                 
                 try:
                     sd.play(played_audio, samplerate=24000)
                     sd.wait()
                 except Exception as playback_err:
                     print(f"[STATUS] ERROR: {playback_err}")
+                
+                audio_queue.task_done()
         except Exception as e:
             print(f"[STATUS] ERROR: {e}")
-            import traceback
-            traceback.print_exc()
             
         print("[STATUS] FINISHED")
 
-    threading.Thread(target=play_audio, daemon=True).start()
+    # Start both workers
+    threading.Thread(target=generator_worker, daemon=True).start()
+    threading.Thread(target=playback_worker, daemon=True).start()
     
     return jsonify({"status": "ok"})
 

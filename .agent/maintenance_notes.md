@@ -43,3 +43,14 @@ When using `AppHandle` to emit events or manage windows, ensure the following tr
 - `tauri::Emitter` (for `.emit()`)
 - `tauri::Manager` (for `.get_webview_window()`, etc.)
 - Use `app_handle.clone()` to pass owned handles into async blocks.
+
+## 5. Performance: Gapless Playback
+
+### The Problem
+Large texts are split into multiple sentences/chunks by the phonemizer. In a sequential "loop & wait" approach, the engine generates Chunk 1, plays it, then *only then* starts generating Chunk 2. This causes a major auditory gap (up to 10s) while the model works on the next segment.
+
+### The Solution: Producer-Consumer Queue
+Implemented a thread-safe `queue.Queue` in `kokoro_server.py`:
+1. **Producer (Generator Thread)**: Runs the Kokoro generator as fast as possible, pushing audio tensors into a buffer.
+2. **Consumer (Playback Thread)**: Pulls from the buffer and feeds the hardware.
+3. **Result**: While Sentence 1 is playing, Sentence 2 is already being generated in the background. By the time Sentence 1 ends, Sentence 2 is ready in the queue for immediate playback, resulting in near-0ms gaps between segments.
