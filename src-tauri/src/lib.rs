@@ -23,12 +23,14 @@ async fn send_to_tts(
     text: String,
     speed: f32,
     voice: String,
+    volume: f32,
 ) -> Result<String, String> {
     let client = reqwest::Client::new();
     let payload = serde_json::json!({
         "text": text,
         "speed": speed,
         "voice": voice,
+        "volume": volume,
     });
 
     let res = client

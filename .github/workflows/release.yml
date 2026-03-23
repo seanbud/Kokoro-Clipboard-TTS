@@ -70,10 +70,8 @@ jobs:
           if [ "${{ matrix.platform }}" == "windows-latest" ]; then
             mv dist/kokoro.exe src-tauri/binaries/kokoro-x86_64-pc-windows-msvc.exe
           else
-            # For macOS, we produce a single binary for the runner's arch. 
-            # In a real universal build, you'd build for both or lipo them.
-            mv dist/kokoro src-tauri/binaries/kokoro-x86_64-apple-darwin
-            cp src-tauri/binaries/kokoro-x86_64-apple-darwin src-tauri/binaries/kokoro-aarch64-apple-darwin
+            # Tauri universal builds expect the sidecar named with the universal triple
+            mv dist/kokoro src-tauri/binaries/kokoro-universal-apple-darwin
           fi
 
       - name: Install frontend dependencies

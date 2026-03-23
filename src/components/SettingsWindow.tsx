@@ -50,6 +50,7 @@ export default function SettingsWindow() {
   const [shortcutEnabled, setShortcutEnabled] = useState(true);
   const [recording, setRecording] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [volume, setVolume] = useState(1.0);
   
   const [devices, setDevices] = useState<{id: number, name: string}[]>([]);
   const [currentDevice, setCurrentDevice] = useState<number>(0);
@@ -69,22 +70,25 @@ export default function SettingsWindow() {
       }
 
       // 2. Fetch local store settings
-      const store = await load("settings.json", { defaults: {}, autoSave: true });
+      const store = await load("settings.json", { defaults: { "volume": 1.0 }, autoSave: true });
       const v = await store.get<string>("voice");
       if (v) setVoice(v);
       const s = await store.get<string>("shortcut");
       if (s) setShortcut(s);
       const e = await store.get<boolean>("shortcut-enabled");
       if (e !== null && e !== undefined) setShortcutEnabled(e);
+      const vol = await store.get<number>("volume");
+      if (vol !== null && vol !== undefined) setVolume(vol);
     })();
   }, []);
 
   // ── Save settings ──
   const handleSave = useCallback(async () => {
-    const store = await load("settings.json", { defaults: {}, autoSave: true });
+    const store = await load("settings.json", { defaults: { "volume": 1.0 }, autoSave: true });
     await store.set("voice", voice);
     await store.set("shortcut", shortcut);
     await store.set("shortcut-enabled", shortcutEnabled);
+    await store.set("volume", volume);
 
     // Re-register the shortcut
     try {
@@ -211,6 +215,31 @@ export default function SettingsWindow() {
               Test
             </button>
           </div>
+        </div>
+
+        {/* Volume Control */}
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <label className="text-xs font-medium text-white/50 uppercase tracking-wider">
+              Volume
+            </label>
+            <span className="text-[11px] font-bold text-[#8AB4F8] tabular-nums">
+              {Math.round(volume * 100)}%
+            </span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="1.5"
+            step="0.05"
+            value={volume}
+            onChange={(e) => setVolume(parseFloat(e.target.value))}
+            className="
+              w-full h-1.5 rounded-lg appearance-none cursor-pointer
+              bg-[#2D2D2D] accent-[#8AB4F8]
+              hover:accent-[#AECBFA] transition-smooth
+            "
+          />
         </div>
 
         {/* Global Shortcut */}

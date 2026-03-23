@@ -52,11 +52,12 @@ def tts():
     text = data.get("text", "")
     speed = data.get("speed", 1.0)
     voice = data.get("voice", "am_fenrir")
+    volume = data.get("volume", 1.0)
     
     if not text:
         return jsonify({"error": "No text provided"}), 400
         
-    print(f"[Sidecar] Synthesizing: {text[:50]}... (Voice: {voice}, Speed: {speed})")
+    print(f"[Sidecar] Synthesizing: {text[:50]}... (Voice: {voice}, Speed: {speed}, Vol: {volume})")
     
     # Reset stop event for new playback
     stop_event.clear()
@@ -72,7 +73,11 @@ def tts():
                     print("[Sidecar] Playback interrupted")
                     break
                 print(f"[Sidecar] Playing chunk {i}...")
-                sd.play(audio, samplerate=24000)
+                
+                # Apply volume
+                played_audio = audio * volume
+                
+                sd.play(played_audio, samplerate=24000)
                 sd.wait() # Wait for this chunk to finish playing before next
         except Exception as e:
             print(f"[Sidecar] Error during synthesis/playback: {e}")
