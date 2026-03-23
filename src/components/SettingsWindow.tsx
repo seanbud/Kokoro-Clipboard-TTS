@@ -70,7 +70,7 @@ export default function SettingsWindow() {
       }
 
       // 2. Fetch local store settings
-      const store = await load("settings.json", { defaults: { "volume": 1.0 }, autoSave: true });
+      const store = await load("settings.json", { defaults: {}, autoSave: false });
       const v = await store.get<string>("voice");
       if (v) setVoice(v);
       const s = await store.get<string>("shortcut");
@@ -78,17 +78,20 @@ export default function SettingsWindow() {
       const e = await store.get<boolean>("shortcut-enabled");
       if (e !== null && e !== undefined) setShortcutEnabled(e);
       const vol = await store.get<number>("volume");
-      if (vol !== null && vol !== undefined) setVolume(vol);
+      if (typeof vol === 'number') {
+        setVolume(vol);
+      }
     })();
   }, []);
 
   // ── Save settings ──
   const handleSave = useCallback(async () => {
-    const store = await load("settings.json", { defaults: { "volume": 1.0 }, autoSave: true });
+    const store = await load("settings.json", { defaults: {}, autoSave: false });
     await store.set("voice", voice);
     await store.set("shortcut", shortcut);
     await store.set("shortcut-enabled", shortcutEnabled);
     await store.set("volume", volume);
+    await store.save(); // Explicitly save to disk
 
     // Re-register the shortcut
     try {
@@ -115,7 +118,7 @@ export default function SettingsWindow() {
 
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-  }, [voice, shortcut, shortcutEnabled]);
+  }, [voice, shortcut, shortcutEnabled, volume]);
 
   // ── Key recorder ──
   const handleKeyRecord = useCallback((e: React.KeyboardEvent) => {

@@ -153,9 +153,16 @@ export default function FloatingWidget() {
     await invoke("hide_reader_window").catch((err) => error(String(err)));
   }, [handleStop]);
 
+  const statusLabel = status === 'Speaking' ? 'text-green-400' : 
+    status === 'Processing' ? 'text-yellow-400 animate-pulse' : 
+    'text-white/60';
+
   return (
-    <div className="h-full flex items-center justify-center p-1 cursor-move" data-tauri-drag-region>
-      <div className="surface shadow-2xl rounded-full flex items-center gap-1.5 px-2 py-1.5 animate-pop border border-white/10" data-tauri-drag-region>
+    <div className="h-full flex items-center justify-center p-1" data-tauri-drag-region>
+      <div 
+        className="surface shadow-2xl rounded-full flex items-center gap-1.5 px-2 py-1.5 animate-pop border border-white/10 cursor-move"
+        data-tauri-drag-region
+      >
         {/* Play / Pause */}
         <button
           onClick={handlePlayPause}
@@ -164,22 +171,18 @@ export default function FloatingWidget() {
             w-10 h-10 rounded-full flex items-center justify-center
             bg-[#8AB4F8] hover:bg-[#AECBFA]
             active:scale-95 transition-smooth
-            text-[#202124] shadow-md
+            text-[#202124] shadow-md cursor-default
           "
         >
           {isPlaying ? <PauseIcon /> : <PlayIcon />}
         </button>
 
-        {/* Status Indicator */}
-        <div className="flex flex-col px-1 min-w-[70px] pointer-events-none">
-          <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest leading-none mb-0.5">
+        {/* Status Indicator (Drag Handle) */}
+        <div className="flex flex-col px-1 min-w-[70px] pointer-events-none select-none" data-tauri-drag-region>
+          <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest leading-none mb-0.5" data-tauri-drag-region>
             Status
           </span>
-          <span className={`text-[11px] font-bold transition-smooth ${
-            status === 'Speaking' ? 'text-green-400' : 
-            status === 'Processing' ? 'text-yellow-400 animate-pulse' : 
-            'text-white/60'
-          }`}>
+          <span className={`text-[11px] font-bold transition-smooth ${statusLabel}`} data-tauri-drag-region>
             {status}
           </span>
         </div>
@@ -194,14 +197,14 @@ export default function FloatingWidget() {
             bg-white/5 hover:bg-white/10
             active:scale-95 transition-smooth
             text-[13px] font-semibold text-white/80
-            tabular-nums select-none cursor-pointer
+            tabular-nums select-none cursor-default
             border border-white/5
           "
         >
           {speed}x
         </button>
 
-        <div className="w-[1px] h-6 bg-white/10 mx-1" />
+        <div className="w-[1px] h-6 bg-white/10 mx-1 pointer-events-none" data-tauri-drag-region />
 
         {/* Stop */}
         <button
@@ -211,7 +214,7 @@ export default function FloatingWidget() {
             w-8 h-8 rounded-full flex items-center justify-center
             bg-white/5 hover:bg-white/10
             active:scale-95 transition-smooth
-            text-white/40 hover:text-white/90
+            text-white/40 hover:text-white/90 cursor-default
           "
         >
           <StopIcon />
@@ -225,7 +228,7 @@ export default function FloatingWidget() {
             w-8 h-8 rounded-full flex items-center justify-center
             bg-white/5 hover:bg-red-500/20
             active:scale-95 transition-smooth
-            text-white/30 hover:text-red-400
+            text-white/30 hover:text-red-400 cursor-default
           "
         >
           <CloseIcon />

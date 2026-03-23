@@ -48,16 +48,16 @@ def get_pipeline():
 @app.route("/tts", methods=["POST"])
 def tts():
     p = get_pipeline()
-    data = request.json
+    data = request.json or {}
     text = data.get("text", "")
-    speed = data.get("speed", 1.0)
+    speed = float(data.get("speed", 1.0))
     voice = data.get("voice", "am_fenrir")
-    volume = data.get("volume", 1.0)
+    volume = float(data.get("volume", 1.0))
     
     if not text:
         return jsonify({"error": "No text provided"}), 400
         
-    print(f"[Sidecar] Synthesizing: {text[:50]}... (Voice: {voice}, Speed: {speed}, Vol: {volume})")
+    print(f"[Sidecar] Synthesizing: {text[:40]}... (Voice: {voice}, Speed: {speed}, Volume: {volume})")
     
     # Reset stop event for new playback
     stop_event.clear()
@@ -72,11 +72,11 @@ def tts():
                 if stop_event.is_set():
                     print("[Sidecar] Playback interrupted")
                     break
-                print(f"[Sidecar] Playing chunk {i}...")
                 
-                # Apply volume
-                played_audio = audio * volume
+                # Apply volume and ensure float32
+                played_audio = (audio * volume).astype(np.float32)
                 
+                print(f"[Sidecar] Playing chunk {i} (Shape: {played_audio.shape}, Type: {played_audio.dtype})")
                 sd.play(played_audio, samplerate=24000)
                 sd.wait() # Wait for this chunk to finish playing before next
         except Exception as e:
@@ -136,7 +136,7 @@ def test_audio():
     print("[Sidecar] Playing test audio beep...")
     try:
         data = request.json or {}
-        volume = data.get("volume", 1.0)
+        volume = float(data.get("volume", 1.0))
         
         fs = 44100
         duration = 0.5
@@ -148,7 +148,7 @@ def test_audio():
             np.ones(int(fs * 0.4)),
             np.linspace(1, 0, int(fs * 0.05))
         ])
-        note = np.sin(440 * t * 2 * np.pi) * 0.1 * envelope * volume
+        note = (np.sin(440 * t * 2 * np.pi) * 0.1 * envelope * volume).astype(np.float32)
         sd.play(note, fs)
         # we don't block here, let it play asynchronously
         return jsonify({"status": "ok"})
