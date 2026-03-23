@@ -154,8 +154,8 @@ export default function FloatingWidget() {
   }, [handleStop]);
 
   return (
-    <div className="h-full flex items-center justify-center p-1" data-tauri-drag-region>
-      <div className="surface shadow-2xl rounded-full flex items-center gap-1.5 px-2 py-1.5 animate-pop border border-white/10">
+    <div className="h-full flex items-center justify-center p-1 cursor-move" data-tauri-drag-region>
+      <div className="surface shadow-2xl rounded-full flex items-center gap-1.5 px-2 py-1.5 animate-pop border border-white/10" data-tauri-drag-region>
         {/* Play / Pause */}
         <button
           onClick={handlePlayPause}
@@ -171,7 +171,7 @@ export default function FloatingWidget() {
         </button>
 
         {/* Status Indicator */}
-        <div className="flex flex-col px-1 min-w-[70px]">
+        <div className="flex flex-col px-1 min-w-[70px] pointer-events-none">
           <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest leading-none mb-0.5">
             Status
           </span>

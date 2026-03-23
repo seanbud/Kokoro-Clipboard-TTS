@@ -135,6 +135,9 @@ def set_device():
 def test_audio():
     print("[Sidecar] Playing test audio beep...")
     try:
+        data = request.json or {}
+        volume = data.get("volume", 1.0)
+        
         fs = 44100
         duration = 0.5
         # Generate a nice soft 440Hz sine wave (A4 note)
@@ -145,7 +148,7 @@ def test_audio():
             np.ones(int(fs * 0.4)),
             np.linspace(1, 0, int(fs * 0.05))
         ])
-        note = np.sin(440 * t * 2 * np.pi) * 0.1 * envelope
+        note = np.sin(440 * t * 2 * np.pi) * 0.1 * envelope * volume
         sd.play(note, fs)
         # we don't block here, let it play asynchronously
         return jsonify({"status": "ok"})

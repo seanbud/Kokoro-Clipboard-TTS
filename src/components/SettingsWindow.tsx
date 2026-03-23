@@ -140,10 +140,10 @@ export default function SettingsWindow() {
     <div className="h-full surface-low text-white flex flex-col">
       {/* Title bar */}
       <div
-        className="flex items-center justify-between px-5 py-3 border-b border-white/5 bg-white/5"
+        className="flex items-center justify-between px-5 py-3 border-b border-white/5 bg-white/5 cursor-move"
         data-tauri-drag-region
       >
-        <h1 className="text-xs font-bold uppercase tracking-[0.1em] text-white/60">
+        <h1 className="text-xs font-bold uppercase tracking-[0.1em] text-white/60 pointer-events-none">
           Settings
         </h1>
       </div>
@@ -203,7 +203,7 @@ export default function SettingsWindow() {
               ))}
             </select>
             <button
-              onClick={() => invoke("test_audio")}
+              onClick={() => invoke("test_audio", { volume })}
               title="Play a test beep"
               className="
                 px-5 py-2.5 rounded-xl text-xs font-semibold

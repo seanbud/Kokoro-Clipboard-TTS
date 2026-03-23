@@ -87,10 +87,12 @@ async fn set_audio_device(id: i32) -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
-async fn test_audio() -> Result<String, String> {
+async fn test_audio(volume: f32) -> Result<String, String> {
     let client = reqwest::Client::new();
+    let payload = serde_json::json!({ "volume": volume });
     client
         .post("http://127.0.0.1:8787/test_audio")
+        .json(&payload)
         .send()
         .await
         .map_err(|e| format!("Audio test failed: {e}"))?;
@@ -225,14 +227,16 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // ── Spawn TTS sidecar ──
+            // ── Spawn TTS sidecar (Async to avoid blocking UI) ──
             {
-                let state = handle.state::<AppState>();
-                let mut mgr = state.sidecar.lock().unwrap();
-                if let Err(e) = mgr.spawn(&handle) {
-                    eprintln!("[Kokoro] Failed to spawn TTS sidecar: {e}");
-                    // Non-fatal: the app can run, TTS calls will fail gracefully
-                }
+                let handle_spawn = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state = handle_spawn.state::<AppState>();
+                    let mut mgr = state.sidecar.lock().unwrap();
+                    if let Err(e) = mgr.spawn(&handle_spawn) {
+                        eprintln!("[Kokoro] Failed to spawn TTS sidecar: {e}");
+                    }
+                });
             }
 
             // ── Setup System Tray ──

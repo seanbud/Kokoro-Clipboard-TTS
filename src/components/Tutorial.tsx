@@ -1,27 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { info, error } from "@tauri-apps/plugin-log";
+import { error } from "@tauri-apps/plugin-log";
 
 export default function Tutorial() {
-  const [initializing, setInitializing] = useState(true);
-
   useEffect(() => {
     (async () => {
       try {
-        info("[Kokoro UI] Initializing Tutorial...");
         const store = await load("settings.json", { defaults: {}, autoSave: true });
         const done = await store.get<boolean>("first-run-done");
         
         if (done) {
-          // If already done, hide the window on startup
           const win = getCurrentWebviewWindow();
           await win.hide();
         }
       } catch (err) {
         error(`[Kokoro UI] Tutorial init failed: ${err}`);
-      } finally {
-        setInitializing(false);
       }
     })();
   }, []);
@@ -37,19 +31,12 @@ export default function Tutorial() {
     }
   };
 
-  // Render a completely blank div while checking store, so we don't flash the UI
-  if (initializing) {
-    return <div className="h-full bg-[#1A1A1A]" />;
-  }
-
   const isMac = navigator.userAgent.includes("Mac");
   const shortcutKey = isMac ? "⌘ + Shift + Q" : "Win + Shift + Q";
 
-  console.log("[Kokoro] Rendering Tutorial UI...");
-
   return (
-    <div className="h-full flex items-center justify-center bg-[#1A1A1A]">
-      <div className="max-w-sm w-full mx-4 animate-fade-in bg-[#2D2D2D] border border-white/10 p-8 rounded-[32px]">
+    <div className="h-full flex items-center justify-center bg-[#1A1A1A] cursor-move" data-tauri-drag-region>
+      <div className="max-w-sm w-full mx-4 animate-fade-in bg-[#2D2D2D] border border-white/10 p-8 rounded-[32px] cursor-default">
         {/* Icon */}
         <div className="flex justify-center mb-6">
           <div className="w-16 h-16 rounded-3xl bg-[#1C2B41] flex items-center justify-center shadow-lg">
