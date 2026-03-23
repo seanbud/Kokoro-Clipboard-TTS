@@ -20,13 +20,14 @@ def get_bundle_dir():
 BUNDLE_DIR = get_bundle_dir()
 MODEL_DIR = os.path.join(BUNDLE_DIR, "model")
 
+from kokoro import KPipeline
+
 app = Flask(__name__)
 stop_event = threading.Event()
 
-# Placeholder for Kokoro model instance
-# model = Kokoro(os.path.join(MODEL_DIR, "kokoro-v0.19.onnx"), 
-#                voices=os.path.join(MODEL_DIR, "voices.json"))
-model = None
+print("[Sidecar] Initializing Kokoro Pipeline (this may take a moment to download weights on first run...)")
+# 'a' => American English, 'b' => British English
+pipeline = KPipeline(lang_code='a') 
 
 @app.route("/tts", methods=["POST"])
 def tts():
@@ -43,17 +44,22 @@ def tts():
     # Reset stop event for new playback
     stop_event.clear()
     
-    # Handle synthesis and playback in a separate thread to not block HTTP response
-    # In a real app, you might want to return a stream or handle queuing.
-    # For MVP, we'll fire-and-forget the audio playback.
-    
-    # mock logic for the template:
+    # Handle synthesis and playback in a separate thread
     def play_audio():
-        # This is where you'd call kokoro.generate()
-        # and sd.play(audio, sample_rate)
         print("[Sidecar] Playback started")
-        # Simulate wait
-        # stop_event.wait(timeout=5)
+        try:
+            # Generate audio chunks
+            generator = pipeline(text, voice=voice, speed=speed)
+            for i, (gs, ps, audio) in enumerate(generator):
+                if stop_event.is_set():
+                    print("[Sidecar] Playback interrupted")
+                    break
+                print(f"[Sidecar] Playing chunk {i}...")
+                sd.play(audio, samplerate=24000)
+                sd.wait() # Wait for this chunk to finish playing before next
+        except Exception as e:
+            print(f"[Sidecar] Error during synthesis/playback: {e}")
+            
         print("[Sidecar] Playback finished")
 
     threading.Thread(target=play_audio, daemon=True).start()

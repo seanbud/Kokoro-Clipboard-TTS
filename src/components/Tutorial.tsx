@@ -3,9 +3,7 @@ import { load } from "@tauri-apps/plugin-store";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 export default function Tutorial() {
-  const [visible, setVisible] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -13,18 +11,16 @@ export default function Tutorial() {
         console.log("[Kokoro] Initializing Tutorial...");
         const store = await load("settings.json", { defaults: {}, autoSave: true });
         const done = await store.get<boolean>("first-run-done");
-        console.log("[Kokoro] first-run-done status:", done);
         
         if (done) {
+          // If already done, hide the window on startup
           const win = getCurrentWebviewWindow();
           await win.hide();
-          setVisible(false);
         }
       } catch (err) {
         console.error("[Kokoro] Tutorial init failed:", err);
-        setError(String(err));
       } finally {
-        setLoading(false);
+        setInitializing(false);
       }
     })();
   }, []);
@@ -33,7 +29,6 @@ export default function Tutorial() {
     try {
       const store = await load("settings.json", { defaults: {}, autoSave: true });
       await store.set("first-run-done", true);
-      setVisible(false);
       const win = getCurrentWebviewWindow();
       await win.hide();
     } catch (err) {
@@ -41,21 +36,10 @@ export default function Tutorial() {
     }
   };
 
-  if (loading) return (
-    <div className="h-full flex items-center justify-center bg-[#1A1A1A] text-white/20 text-xs">
-      Loading...
-    </div>
-  );
-  
-  if (error) return (
-    <div className="h-full flex items-center justify-center bg-[#1A1A1A] p-8">
-      <div className="text-red-400 text-xs font-mono bg-red-400/10 p-4 rounded-xl border border-red-400/20">
-        Error: {error}
-      </div>
-    </div>
-  );
-
-  if (!visible) return null;
+  // Render a completely blank div while checking store, so we don't flash the UI
+  if (initializing) {
+    return <div className="h-full bg-[#1A1A1A]" />;
+  }
 
   const isMac = navigator.userAgent.includes("Mac");
   const shortcutKey = isMac ? "⌘ + Shift + Q" : "Win + Shift + Q";
