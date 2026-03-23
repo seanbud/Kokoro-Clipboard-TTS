@@ -57,32 +57,38 @@ def tts():
     if not text:
         return jsonify({"error": "No text provided"}), 400
         
-    print(f"[Sidecar] Synthesizing: {text[:40]}... (Voice: {voice}, Speed: {speed}, Volume: {volume})")
+    print(f"[Sidecar] Synthesizing: '{text[:20]}...' (V:{voice}, S:{speed}, Vol:{volume})")
     
-    # Reset stop event for new playback
     stop_event.clear()
     
-    # Handle synthesis and playback in a separate thread
     def play_audio():
         print("[Sidecar] Playback started")
         try:
-            # Generate audio chunks
             generator = p(text, voice=voice, speed=speed)
             for i, (gs, ps, audio) in enumerate(generator):
                 if stop_event.is_set():
                     print("[Sidecar] Playback interrupted")
                     break
                 
-                # Apply volume and ensure float32
+                # Apply volume and ensure float32 for sounddevice
                 played_audio = (audio * volume).astype(np.float32)
                 
-                print(f"[Sidecar] Playing chunk {i} (Shape: {played_audio.shape}, Type: {played_audio.dtype})")
-                sd.play(played_audio, samplerate=24000)
-                sd.wait() # Wait for this chunk to finish playing before next
+                # Stats for debugging silence
+                max_val = np.max(np.abs(played_audio))
+                rms = np.sqrt(np.mean(played_audio**2))
+                print(f"[Sidecar] Chunk {i} | Len: {len(played_audio)} | Max: {max_val:.4f} | RMS: {rms:.4f} | Type: {played_audio.dtype}")
+                
+                try:
+                    sd.play(played_audio, samplerate=24000)
+                    sd.wait()
+                except Exception as playback_err:
+                    print(f"[Sidecar] PLAYBACK ERROR on chunk {i}: {playback_err}")
         except Exception as e:
-            print(f"[Sidecar] Error during synthesis/playback: {e}")
+            print(f"[Sidecar] ERROR in main loop: {e}")
+            import traceback
+            traceback.print_exc()
             
-        print("[Sidecar] Playback finished")
+        print("[Sidecar] Playback thread finished")
 
     threading.Thread(target=play_audio, daemon=True).start()
     
@@ -140,20 +146,22 @@ def test_audio():
         
         fs = 44100
         duration = 0.5
-        # Generate a nice soft 440Hz sine wave (A4 note)
         t = np.linspace(0, duration, int(fs * duration), False)
-        # Apply a simple envelope so it doesn't click sharply
         envelope = np.concatenate([
-            np.linspace(0, 1, int(fs * 0.05)),
-            np.ones(int(fs * 0.4)),
-            np.linspace(1, 0, int(fs * 0.05))
+            np.linspace(0, 1, int(fs * 0.01)),
+            np.ones(int(fs * 0.48)),
+            np.linspace(1, 0, int(fs * 0.01))
         ])
-        note = (np.sin(440 * t * 2 * np.pi) * 0.1 * envelope * volume).astype(np.float32)
+        note = np.sin(440 * t * 2 * np.pi) * 0.1 * envelope * volume
+        
+        # Stats
+        max_val = np.max(np.abs(note))
+        print(f"[Sidecar] Test Beep | Max: {max_val:.4f} | Vol: {volume}")
+        
         sd.play(note, fs)
-        # we don't block here, let it play asynchronously
         return jsonify({"status": "ok"})
     except Exception as e:
-        print(f"[Sidecar] Test audio error: {e}")
+        print(f"[Sidecar] Test audio ERROR: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/health", methods=["GET"])

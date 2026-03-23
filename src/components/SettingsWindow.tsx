@@ -2,36 +2,15 @@ import { useEffect, useState, useCallback } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import { register, unregister, isRegistered } from "@tauri-apps/plugin-global-shortcut";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+
 // ─── Kokoro voice presets ──────────────────────────────────────────────────
 const VOICE_PRESETS = [
-  "af_alloy",
-  "af_aoede",
-  "af_bella",
-  "af_heart",
-  "af_jessica",
-  "af_kore",
-  "af_nicole",
-  "af_nova",
-  "af_river",
-  "af_sarah",
-  "af_sky",
-  "am_adam",
-  "am_echo",
-  "am_eric",
-  "am_fenrir",
-  "am_liam",
-  "am_michael",
-  "am_onyx",
-  "am_puck",
-  "am_santa",
-  "bf_alice",
-  "bf_emma",
-  "bf_isabella",
-  "bf_lily",
-  "bm_daniel",
-  "bm_fable",
-  "bm_george",
-  "bm_lewis",
+  "af_alloy", "af_aoede", "af_bella", "af_heart", "af_jessica", "af_kore",
+  "af_nicole", "af_nova", "af_river", "af_sarah", "af_sky", "am_adam",
+  "am_echo", "am_eric", "am_fenrir", "am_liam", "am_michael", "am_onyx",
+  "am_puck", "am_santa", "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
+  "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
 ] as const;
 
 const DEFAULT_VOICE = "am_fenrir";
@@ -54,6 +33,11 @@ export default function SettingsWindow() {
   
   const [devices, setDevices] = useState<{id: number, name: string}[]>([]);
   const [currentDevice, setCurrentDevice] = useState<number>(0);
+
+  // ── Dragging ──
+  const handleDrag = () => {
+    getCurrentWebviewWindow().startDragging();
+  };
 
   // ── Load settings ──
   useEffect(() => {
@@ -91,12 +75,11 @@ export default function SettingsWindow() {
     await store.set("shortcut", shortcut);
     await store.set("shortcut-enabled", shortcutEnabled);
     await store.set("volume", volume);
-    await store.save(); // Explicitly save to disk
+    await store.save();
 
     // Re-register the shortcut
     try {
       const platformDefault = getPlatformDefault();
-      // Unregister old shortcut if it was registered
       if (await isRegistered(platformDefault)) {
         await unregister(platformDefault);
       }
@@ -107,7 +90,6 @@ export default function SettingsWindow() {
       if (shortcutEnabled) {
         await register(shortcut, (event) => {
           if (event.state === "Pressed") {
-            // The shortcut trigger is handled via event emission
             console.log("[Kokoro] Shortcut triggered");
           }
         });
@@ -124,13 +106,11 @@ export default function SettingsWindow() {
   const handleKeyRecord = useCallback((e: React.KeyboardEvent) => {
     if (!recording) return;
     e.preventDefault();
-
     const parts: string[] = [];
     if (e.metaKey) parts.push("Command");
     if (e.ctrlKey) parts.push("Control");
     if (e.altKey) parts.push("Alt");
     if (e.shiftKey) parts.push("Shift");
-
     const key = e.key;
     if (!["Control", "Shift", "Alt", "Meta"].includes(key)) {
       parts.push(key.length === 1 ? key.toUpperCase() : key);
@@ -144,7 +124,7 @@ export default function SettingsWindow() {
       {/* Title bar */}
       <div
         className="flex items-center justify-between px-5 py-3 border-b border-white/5 bg-white/5 cursor-move"
-        data-tauri-drag-region
+        onMouseDown={handleDrag}
       >
         <h1 className="text-xs font-bold uppercase tracking-[0.1em] text-white/60 pointer-events-none">
           Settings
@@ -160,13 +140,7 @@ export default function SettingsWindow() {
           <select
             value={voice}
             onChange={(e) => setVoice(e.target.value)}
-            className="
-              w-full px-4 py-2.5 rounded-xl
-              bg-[#2D2D2D] border border-white/10
-              text-sm text-white/90
-              focus:outline-none focus:border-[#8AB4F8]/50
-              transition-smooth cursor-pointer
-            "
+            className="w-full px-4 py-2.5 rounded-xl bg-[#2D2D2D] border border-white/10 text-sm text-white/90 focus:outline-none focus:border-[#8AB4F8]/50 transition-smooth cursor-pointer"
           >
             {VOICE_PRESETS.map((v) => (
               <option key={v} value={v} className="bg-[#2D2D2D]">
@@ -187,16 +161,9 @@ export default function SettingsWindow() {
               onChange={async (e) => {
                 const id = parseInt(e.target.value);
                 setCurrentDevice(id);
-                // Directly tell sidecar to switch device
                 await invoke("set_audio_device", { id }).catch(console.error);
               }}
-              className="
-                flex-1 px-4 py-2.5 rounded-xl
-                bg-[#2D2D2D] border border-white/10
-                text-sm text-white/90
-                focus:outline-none focus:border-[#8AB4F8]/50
-                transition-smooth cursor-pointer
-              "
+              className="flex-1 px-4 py-2.5 rounded-xl bg-[#2D2D2D] border border-white/10 text-sm text-white/90 focus:outline-none focus:border-[#8AB4F8]/50 transition-smooth cursor-pointer"
             >
               {devices.length === 0 && <option value={0}>Default System Device</option>}
               {devices.map((d) => (
@@ -208,12 +175,7 @@ export default function SettingsWindow() {
             <button
               onClick={() => invoke("test_audio", { volume })}
               title="Play a test beep"
-              className="
-                px-5 py-2.5 rounded-xl text-xs font-semibold
-                bg-white/5 border border-white/10
-                hover:bg-white/10 transition-smooth
-                text-white/60 hover:text-[#8AB4F8]
-              "
+              className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-white/5 border border-white/10 hover:bg-white/10 transition-smooth text-white/60 hover:text-[#8AB4F8]"
             >
               Test
             </button>
@@ -237,11 +199,7 @@ export default function SettingsWindow() {
             step="0.05"
             value={volume}
             onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="
-              w-full h-1.5 rounded-lg appearance-none cursor-pointer
-              bg-[#2D2D2D] accent-[#8AB4F8]
-              hover:accent-[#AECBFA] transition-smooth
-            "
+            className="w-full h-1.5 rounded-lg appearance-none cursor-pointer bg-[#2D2D2D] accent-[#8AB4F8] hover:accent-[#AECBFA] transition-smooth"
           />
         </div>
 
@@ -256,15 +214,7 @@ export default function SettingsWindow() {
               onClick={() => setRecording(true)}
               onKeyDown={handleKeyRecord}
               onBlur={() => setRecording(false)}
-              className={`
-                flex-1 px-4 py-2.5 rounded-xl text-sm font-medium
-                border transition-smooth cursor-pointer
-                ${
-                  recording
-                    ? "border-[#8AB4F8] bg-[#1C2B41] text-[#D3E3FD]"
-                    : "border-white/10 bg-[#2D2D2D] text-white/90"
-                }
-              `}
+              className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-medium border transition-smooth cursor-pointer ${recording ? "border-[#8AB4F8] bg-[#1C2B41] text-[#D3E3FD]" : "border-white/10 bg-[#2D2D2D] text-white/90"}`}
             >
               {recording ? "Press keys..." : shortcut}
             </div>
@@ -273,12 +223,7 @@ export default function SettingsWindow() {
                 setShortcut(getPlatformDefault());
                 setRecording(false);
               }}
-              className="
-                px-4 py-2.5 rounded-xl text-xs font-semibold
-                bg-white/5 border border-white/10
-                hover:bg-white/10 transition-smooth
-                text-white/60 hover:text-white/90
-              "
+              className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-white/5 border border-white/10 hover:bg-white/10 transition-smooth text-white/60 hover:text-white/90"
             >
               Reset
             </button>
@@ -290,17 +235,10 @@ export default function SettingsWindow() {
           <span className="text-sm text-white/70">Enable Shortcut</span>
           <button
             onClick={() => setShortcutEnabled(!shortcutEnabled)}
-            className={`
-              w-10 h-5 rounded-full transition-smooth relative
-              ${shortcutEnabled ? "bg-[#8AB4F8]" : "bg-white/10"}
-            `}
+            className={`w-10 h-5 rounded-full transition-smooth relative ${shortcutEnabled ? "bg-[#8AB4F8]" : "bg-white/10"}`}
           >
             <span
-              className={`
-                absolute top-0.5 w-4 h-4 rounded-full shadow-sm
-                transition-smooth
-                ${shortcutEnabled ? "left-5.5 bg-[#202124]" : "left-0.5 bg-white/40"}
-              `}
+              className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-smooth ${shortcutEnabled ? "left-5.5 bg-[#202124]" : "left-0.5 bg-white/40"}`}
             />
           </button>
         </div>
@@ -308,15 +246,7 @@ export default function SettingsWindow() {
         {/* Save */}
         <button
           onClick={handleSave}
-          className={`
-            w-full py-3.5 rounded-full font-bold text-sm tracking-wide
-            transition-smooth shadow-lg
-            ${
-              saved
-                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                : "bg-[#8AB4F8] hover:bg-[#AECBFA] text-[#202124] active:scale-[0.98]"
-            }
-          `}
+          className={`w-full py-3.5 rounded-full font-bold text-sm tracking-wide transition-smooth shadow-lg ${saved ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-[#8AB4F8] hover:bg-[#AECBFA] text-[#202124] active:scale-[0.98]"}`}
         >
           {saved ? "✓ Saved" : "Save Changes"}
         </button>

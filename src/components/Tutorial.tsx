@@ -4,12 +4,15 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { error } from "@tauri-apps/plugin-log";
 
 export default function Tutorial() {
+  const handleDrag = () => {
+    getCurrentWebviewWindow().startDragging();
+  };
+
   useEffect(() => {
     (async () => {
       try {
-        const store = await load("settings.json", { defaults: {}, autoSave: true });
+        const store = await load("settings.json", { defaults: {}, autoSave: false });
         const done = await store.get<boolean>("first-run-done");
-        
         if (done) {
           const win = getCurrentWebviewWindow();
           await win.hide();
@@ -22,8 +25,9 @@ export default function Tutorial() {
 
   const handleDismiss = async () => {
     try {
-      const store = await load("settings.json", { defaults: {}, autoSave: true });
+      const store = await load("settings.json", { defaults: {}, autoSave: false });
       await store.set("first-run-done", true);
+      await store.save();
       const win = getCurrentWebviewWindow();
       await win.hide();
     } catch (err) {
@@ -35,8 +39,8 @@ export default function Tutorial() {
   const shortcutKey = isMac ? "⌘ + Shift + Q" : "Win + Shift + Q";
 
   return (
-    <div className="h-full flex items-center justify-center bg-[#1A1A1A] cursor-move" data-tauri-drag-region>
-      <div className="max-w-sm w-full mx-4 animate-fade-in bg-[#2D2D2D] border border-white/10 p-8 rounded-[32px] cursor-default">
+    <div className="h-full flex items-center justify-center bg-[#1A1A1A] cursor-move" onMouseDown={handleDrag}>
+      <div className="max-w-sm w-full mx-4 animate-fade-in bg-[#2D2D2D] border border-white/10 p-8 rounded-[32px] cursor-default" onMouseDown={(e) => e.stopPropagation()}>
         {/* Icon */}
         <div className="flex justify-center mb-6">
           <div className="w-16 h-16 rounded-3xl bg-[#1C2B41] flex items-center justify-center shadow-lg">
