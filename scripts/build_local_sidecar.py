@@ -42,6 +42,8 @@ def run():
             "--collect-all", "misaki",
             "--collect-all", "phonemizer",
             "--collect-all", "language_tags",
+            "--collect-all", "espeakng_loader",
+            "--collect-all", "huggingface_hub",
             "--collect-all", "sounddevice",
             "--collect-all", "soundfile",
             "sidecar/kokoro_server.py"
