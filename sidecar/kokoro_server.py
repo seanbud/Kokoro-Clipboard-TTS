@@ -45,30 +45,55 @@ def get_pipeline():
             raise e
     return pipeline
 
-def watchdog():
-    """ Monitors the parent process and exits if it dies. Safely fails if psutil is missing. """
+def cleanup_zombies():
+    """ Force-kills any previous instances using a PID file. """
+    pid_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kokoro.pid")
+    if os.path.exists(pid_file):
+        try:
+            with open(pid_file, "r") as f:
+                old_pid = int(f.read().strip())
+            if old_pid != os.getpid():
+                print(f"[Sidecar] Cleaning up zombie process {old_pid}...")
+                if sys.platform == "win32":
+                    os.system(f"taskkill /F /PID {old_pid} /T")
+                else:
+                    import signal
+                    os.kill(old_pid, signal.SIGKILL)
+        except Exception as e:
+            print(f"[Sidecar] Cleanup warning: {e}")
+    
+    # Write current PID
     try:
-        import psutil
-        import time
-        initial_ppid = os.getppid()
-        parent = psutil.Process(initial_ppid)
-        print(f"[Sidecar] Watchdog active. Monitoring parent PID: {initial_ppid}")
-        while True:
-            if not parent.is_running() or os.getppid() != initial_ppid:
-                print("[Sidecar] Parent process lost. Exiting...")
-                os._exit(0)
-            time.sleep(5)
-    except Exception as e:
-        print(f"[Sidecar] Watchdog disabled or limited: {e}")
-        # Fallback to a very simple check that works on some systems
-        import time
-        initial_ppid = os.getppid()
-        while True:
-            if os.getppid() != initial_ppid:
-                os._exit(0)
-            time.sleep(10)
+        with open(pid_file, "w") as f:
+            f.write(str(os.getpid()))
+    except:
+        pass
 
-# Start watchdog thread immediately
+def watchdog():
+    """ Monitors the parent process and exits if it dies. """
+    import time
+    initial_ppid = os.getppid()
+    # If ppid is 1, we are already orphaned
+    if initial_ppid <= 1 and sys.platform != "win32":
+        return
+
+    print(f"[Sidecar] Watchdog active. Monitoring parent: {initial_ppid}")
+    while True:
+        try:
+            # Check if parent is still alive
+            if sys.platform == "win32":
+                # On Windows, os.kill(child, 0) works if we have permissions
+                os.kill(initial_ppid, 0)
+            else:
+                if os.getppid() != initial_ppid:
+                    raise OSError()
+        except OSError:
+            print("[Sidecar] Parent process lost. Exiting...")
+            os._exit(0)
+        time.sleep(5)
+
+# Initialize
+cleanup_zombies()
 threading.Thread(target=watchdog, daemon=True).start()
 
 @app.route("/tts", methods=["POST"])
