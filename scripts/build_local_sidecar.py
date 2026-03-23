@@ -39,6 +39,9 @@ def run():
             "--name", "kokoro",
             "--collect-all", "onnxruntime",
             "--collect-all", "kokoro",
+            "--collect-all", "misaki",
+            "--collect-all", "phonemizer",
+            "--collect-all", "language_tags",
             "sidecar/kokoro_server.py"
         ])
     except Exception as e:

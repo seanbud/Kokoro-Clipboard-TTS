@@ -148,7 +148,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                         WebviewUrl::App("/".into()),
                     )
                     .title("Kokoro TTS — Settings")
-                    .inner_size(480.0, 420.0)
+                    .inner_size(480.0, 600.0)
                     .resizable(false)
                     .center()
                     .build();
