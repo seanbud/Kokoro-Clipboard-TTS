@@ -25,6 +25,14 @@ export default function Splash() {
   //   3. Also poll initial status as a fallback
   useEffect(() => {
     let active = true;
+    let readyHandled = false; // Prevent double-fire from event + poller
+
+    const onReady = () => {
+      if (readyHandled || !active) return;
+      readyHandled = true;
+      setStatus("Ready!");
+      setTimeout(() => { if (active) handleReady(); }, 1800);
+    };
 
     // Step 1: Register event listener BEFORE starting sidecar
     const unlisten = listen<string>("sidecar-status", (event) => {
@@ -32,8 +40,7 @@ export default function Splash() {
       const s = event.payload;
       console.log("[Splash] sidecar-status event:", s);
       if (s === "ready") {
-        setStatus("Ready!");
-        setTimeout(() => { if (active) handleReady(); }, 1800);
+        onReady();
       } else if (s === "starting") {
         setStatus("Starting TTS Engine");
       } else if (s.startsWith("error")) {
@@ -49,13 +56,12 @@ export default function Splash() {
 
     // Step 3: Fallback — poll initial status in case events were missed
     const pollInterval = setInterval(() => {
-      if (!active) return;
+      if (!active || readyHandled) return;
       invoke<string>("get_sidecar_status").then((s) => {
-        if (!active) return;
+        if (!active || readyHandled) return;
         if (s === "ready") {
-          setStatus("Ready!");
           clearInterval(pollInterval);
-          setTimeout(() => { if (active) handleReady(); }, 1800);
+          onReady();
         } else if (s === "starting") {
           setStatus("Starting TTS Engine");
         }
