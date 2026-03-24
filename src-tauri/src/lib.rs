@@ -107,6 +107,15 @@ async fn get_sidecar_status(state: tauri::State<'_, AppState>) -> Result<String,
 }
 
 #[tauri::command]
+async fn get_sidecar_log_path(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let mgr = state.sidecar.lock().unwrap();
+    Ok(mgr.log_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default())
+}
+
+#[tauri::command]
 async fn start_sidecar(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
     let mut mgr = state.sidecar.lock().unwrap();
     mgr.spawn(&app)
@@ -237,6 +246,7 @@ pub fn run() {
             set_audio_device,
             test_audio,
             get_sidecar_status,
+            get_sidecar_log_path,
             start_sidecar,
         ])
         .setup(|app| {

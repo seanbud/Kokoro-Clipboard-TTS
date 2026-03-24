@@ -4,11 +4,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow, getAllWebviewWindows } from "@tauri-apps/api/webviewWindow";
 import { load } from "@tauri-apps/plugin-store";
 import { error } from "@tauri-apps/plugin-log";
+import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import icon from "../assets/icon.png";
 
 export default function Splash() {
   const [status, setStatus] = useState("Initializing...");
   const [dots, setDots] = useState("");
+  const [logPath, setLogPath] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Animated dots for loading states
   useEffect(() => {
@@ -17,6 +20,17 @@ export default function Splash() {
     }, 500);
     return () => clearInterval(timer);
   }, []);
+
+  // Fetch and store the log path when an error occurs (called at most once)
+  const handleEngineError = async () => {
+    if (logPath) return; // already fetched
+    try {
+      const path = await invoke<string>("get_sidecar_log_path");
+      if (path) setLogPath(path);
+    } catch {
+      // non-fatal – just won't show log path
+    }
+  };
 
   // ── Main startup orchestration ──
   // Order matters:
@@ -45,13 +59,17 @@ export default function Splash() {
         setStatus("Starting TTS Engine");
       } else if (s.startsWith("error")) {
         setStatus("Engine Error");
+        handleEngineError();
       }
     });
 
     // Step 2: Start the sidecar AFTER listener is registered
     invoke("start_sidecar").catch((e) => {
       console.error("[Splash] Failed to start sidecar:", e);
-      if (active) setStatus("Engine Error");
+      if (active) {
+        setStatus("Engine Error");
+        handleEngineError();
+      }
     });
 
     // Step 3: Fallback — poll initial status in case events were missed
@@ -98,6 +116,38 @@ export default function Splash() {
     }
   };
 
+  // ── Log path helpers ──
+  const handleCopyPath = () => {
+    if (!logPath) return;
+    navigator.clipboard.writeText(logPath).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const handleOpenFolder = async () => {
+    if (!logPath) return;
+    try {
+      // revealItemInDir opens the folder and selects/highlights the log file
+      await revealItemInDir(logPath);
+    } catch {
+      // Fallback: open the parent directory
+      const sepIdx = Math.max(logPath.lastIndexOf("/"), logPath.lastIndexOf("\\"));
+      if (sepIdx > 0) {
+        const logDir = logPath.substring(0, sepIdx);
+        try {
+          await openPath(logDir);
+        } catch {
+          handleCopyPath();
+        }
+      } else {
+        handleCopyPath();
+      }
+    }
+  };
+
+  const isError = status.includes("Error");
+
   return (
     <div className="window-wrapper" data-tauri-drag-region>
       <div 
@@ -128,7 +178,7 @@ export default function Splash() {
           </svg>
         </button>
 
-        <div className="text-center animate-fade-in" data-tauri-drag-region>
+        <div className="text-center animate-fade-in w-full px-6" data-tauri-drag-region>
           <div className="w-24 h-24 mx-auto mb-6 relative" data-tauri-drag-region>
             <div className="absolute inset-0 bg-[#8AB4F8] rounded-[32px] rotate-12 opacity-5 animate-pulse"></div>
             <img 
@@ -145,12 +195,38 @@ export default function Splash() {
             key={status}
             className={`
               text-[11px] uppercase tracking-widest font-bold min-h-[1.5rem] animate-text-update
-              ${status.includes("Ready") ? "text-emerald-400" : "text-white/40"}
+              ${status.includes("Ready") ? "text-emerald-400" : isError ? "text-red-400" : "text-white/40"}
             `}
             data-tauri-drag-region
           >
-            {status}{status.includes("Ready") || status.includes("Error") ? "" : dots}
+            {status}{status.includes("Ready") || isError ? "" : dots}
           </div>
+
+          {/* Engine Error log info */}
+          {isError && logPath && (
+            <div className="mt-4 space-y-2 pointer-events-auto">
+              <p className="text-[10px] text-white/40 leading-relaxed">
+                A log file was saved. Share it to help diagnose the issue:
+              </p>
+              <div className="flex items-center gap-1.5 bg-white/5 rounded-lg px-2 py-1.5 border border-white/10">
+                <span className="flex-1 text-[9px] text-white/50 font-mono truncate text-left" title={logPath}>
+                  {logPath}
+                </span>
+                <button
+                  onClick={handleCopyPath}
+                  className="shrink-0 text-[9px] font-bold px-2 py-0.5 rounded bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-smooth cursor-pointer"
+                >
+                  {copied ? "✓" : "Copy"}
+                </button>
+              </div>
+              <button
+                onClick={handleOpenFolder}
+                className="w-full text-[10px] font-semibold py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 hover:text-white/80 transition-smooth cursor-pointer"
+              >
+                Open Log Folder
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

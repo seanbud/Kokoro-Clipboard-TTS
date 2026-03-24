@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
+use std::io::Write;
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
 use std::time::Duration;
 
@@ -11,6 +12,8 @@ use std::time::Duration;
 pub struct SidecarManager {
     child: Option<CommandChild>,
     pub status: Arc<Mutex<String>>,
+    /// Path to the sidecar's log file (stdout + stderr captured here).
+    pub log_path: Option<std::path::PathBuf>,
 }
 
 impl SidecarManager {
@@ -18,6 +21,7 @@ impl SidecarManager {
         Self { 
             child: None,
             status: Arc::new(Mutex::new("disconnected".into())),
+            log_path: None,
         }
     }
 
@@ -30,6 +34,21 @@ impl SidecarManager {
         if self.is_running() {
             return Ok(());
         }
+
+        // ─── Open sidecar log file ───
+        // All sidecar stdout/stderr is captured here so users can diagnose errors.
+        let log_dir = app.path().app_log_dir().unwrap_or_else(|_| std::env::temp_dir());
+        let _ = std::fs::create_dir_all(&log_dir);
+        let log_path = log_dir.join("kokoro-sidecar.log");
+        let log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&log_path)
+            .ok();
+        let log_file_arc: Arc<Mutex<Option<std::fs::File>>> = Arc::new(Mutex::new(log_file));
+        self.log_path = Some(log_path.clone());
+        println!("[Kokoro] Sidecar log: {:?}", log_path);
 
         // On Windows, if the developer forcefully stops the Tauri dev server (Ctrl+C),
         // the Rust app dies instantly without running its Exit handler, leaving the sidecar
@@ -128,6 +147,7 @@ impl SidecarManager {
             sidecar.spawn().map_err(|e| format!("Failed to spawn sidecar binary: {e}"))?
         };
 
+        let log_file_arc2 = Arc::clone(&log_file_arc);
         let handle_for_stdout = app.clone();
         tauri::async_runtime::spawn(async move {
             use tauri_plugin_shell::process::CommandEvent;
@@ -135,6 +155,12 @@ impl SidecarManager {
                 match event {
                     CommandEvent::Stdout(line) => {
                         let line_str = String::from_utf8_lossy(&line);
+                        // Write to log file
+                        if let Ok(mut guard) = log_file_arc2.lock() {
+                            if let Some(f) = guard.as_mut() {
+                                let _ = writeln!(f, "{}", line_str.trim_end());
+                            }
+                        }
                         // Emit events based on sidecar logs for the frontend
                         if line_str.contains("Chunk 0") {
                             let _ = handle_for_stdout.emit("tts-speaking", ());
@@ -146,7 +172,14 @@ impl SidecarManager {
                         print!("{}", line_str);
                     }
                     CommandEvent::Stderr(line) => {
-                        eprint!("{}", String::from_utf8_lossy(&line));
+                        let line_str = String::from_utf8_lossy(&line);
+                        // Write stderr to log file too (PyInstaller bootstrap errors land here)
+                        if let Ok(mut guard) = log_file_arc2.lock() {
+                            if let Some(f) = guard.as_mut() {
+                                let _ = writeln!(f, "[ERR] {}", line_str.trim_end());
+                            }
+                        }
+                        eprint!("{}", line_str);
                     }
                     CommandEvent::Terminated(payload) => {
                         println!("[Kokoro] Sidecar terminated with payload: {:?}", payload);
