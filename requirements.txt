@@ -2,9 +2,12 @@ flask
 sounddevice
 soundfile
 numpy
-kokoro>=0.6.0
+kokoro>=0.9.4
+torch
+loguru
+transformers
 onnxruntime
-misaki
+misaki[en]>=0.9.4
 phonemizer
 language_tags
 espeakng_loader

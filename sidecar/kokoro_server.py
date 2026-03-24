@@ -10,6 +10,12 @@ def print(*args, **kwargs):
     kwargs.setdefault('flush', True)
     builtins.print(*args, **kwargs)
 
+# Redirect stderr to stdout so that Python tracebacks and error output are
+# captured by the Tauri sidecar log (which reads stdout line-by-line with
+# flush=True). Without this, buffered stderr output is often lost on Windows
+# when a PyInstaller --onefile process crashes before the buffer is flushed.
+sys.stderr = sys.stdout
+
 import sounddevice as sd
 import numpy as np
 

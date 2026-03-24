@@ -54,6 +54,9 @@ def run():
             "--collect-all", "huggingface_hub",
             "--collect-all", "sounddevice",
             "--collect-all", "soundfile",
+            "--collect-all", "torch",
+            "--collect-all", "loguru",
+            "--collect-all", "transformers",
             "sidecar/kokoro_server.py"
         ])
     except Exception as e:
