@@ -233,8 +233,11 @@ pub fn run() {
             get_sidecar_status,
         ])
         .setup(|app| {
+            // ── Show splash window IMMEDIATELY ──
+            if let Some(splash) = app.get_webview_window("splash") {
+                let _ = splash.show();
+            }
             let handle = app.handle().clone();
-
             // ── Spawn TTS sidecar (in background) ──
             {
                 let handle_for_sidecar = handle.clone();
