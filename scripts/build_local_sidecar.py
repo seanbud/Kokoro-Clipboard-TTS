@@ -13,7 +13,15 @@ def run():
     venv_dir = os.path.join(os.getcwd(), ".sidecar-venv")
     if not os.path.exists(venv_dir):
         print("Creating virtual environment to bypass permission errors...")
-        subprocess.check_call([sys.executable, "-m", "venv", venv_dir])
+        # Prefer python3.10 if available on macOS
+        python_exec = sys.executable
+        if os.name != 'nt':
+            import shutil
+            p310 = shutil.which("python3.10")
+            if p310:
+                python_exec = p310
+                print(f"Using {python_exec} for virtual environment...")
+        subprocess.check_call([python_exec, "-m", "venv", venv_dir])
         
     # Determine the python and pyinstaller executable paths in the venv
     if os.name == 'nt':
@@ -53,10 +61,21 @@ def run():
         return
 
     # 5. Move and rename for Tauri
-    # Triple for Windows: x86_64-pc-windows-msvc
-    triple = "x86_64-pc-windows-msvc"
-    src = "dist/kokoro.exe"
-    dst = f"src-tauri/binaries/kokoro-{triple}.exe"
+    # Detect target triple for macOS/Windows
+    if os.name == 'nt':
+        triple = "x86_64-pc-windows-msvc"
+        src = "dist/kokoro.exe"
+        dst = f"src-tauri/binaries/kokoro-{triple}.exe"
+    else:
+        # For macOS, we need to detect architecture
+        import platform
+        arch = platform.machine()
+        if arch == 'arm64':
+            triple = "aarch64-apple-darwin"
+        else:
+            triple = "x86_64-apple-darwin"
+        src = "dist/kokoro"
+        dst = f"src-tauri/binaries/kokoro-{triple}"
     
     print(f"\nMoving {src} to {dst}...")
     if os.path.exists(dst):

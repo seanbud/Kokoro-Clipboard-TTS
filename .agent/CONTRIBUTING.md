@@ -7,8 +7,9 @@ Thank you for your interest in contributing! This document contains the necessar
 ### Prerequisites
 
 - **Node.js** 20+ and **npm**
-- **Rust** (stable)
+- **Rust** (stable, 1.88.0+ recommended)
 - **Python 3.10+** (for sidecar development)
+- **macOS only**: `brew install portaudio libsndfile`
 
 ### Clone & Install
 
@@ -22,9 +23,8 @@ npm install
 
 ```bash
 # 1. Build the sidecar once for your platform
-# Windows
-pyinstaller --onefile --name kokoro --add-data "sidecar/model;model" sidecar/kokoro_server.py
-mv dist/kokoro.exe src-tauri/binaries/kokoro-x86_64-pc-windows-msvc.exe
+# This script automatically detects your OS/Architecture and builds the sidecar into src-tauri/binaries/
+python3 scripts/build_local_sidecar.py
 
 # 2. Run Tauri dev
 npm run tauri dev
@@ -42,19 +42,9 @@ The GitHub Actions workflow (`release.yml`) automatically:
 
 ---
 
-## 🏗 Building the Kokoro Sidecar (Manual)
-
-If you are developing the sidecar script (`sidecar/kokoro_server.py`), you can manually test building it via PyInstaller.
+If you are developing the sidecar script (`sidecar/kokoro_server.py`), you can use the provided build script which handles all collectors and renaming:
 
 ```bash
-# Create a virtual environment
-python -m venv kokoro-env
-kokoro-env\Scripts\activate
-
-# Install dependencies
-pip install kokoro sounddevice flask pyinstaller
-
-# Bundle with PyInstaller
-pyinstaller --onefile --name kokoro --add-data "sidecar/model;model" sidecar/kokoro_server.py
+python3 scripts/build_local_sidecar.py
 ```
 > The file naming convention with target triples is required by Tauri's `externalBin` resolver (e.g., `kokoro-x86_64-pc-windows-msvc.exe`).
