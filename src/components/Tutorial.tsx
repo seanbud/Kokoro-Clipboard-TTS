@@ -1,27 +1,10 @@
-import { useEffect } from "react";
+
 import { load } from "@tauri-apps/plugin-store";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { error } from "@tauri-apps/plugin-log";
 
 export default function Tutorial() {
-  const handleDrag = () => {
-    getCurrentWebviewWindow().startDragging();
-  };
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const store = await load("settings.json", { defaults: {}, autoSave: false });
-        const done = await store.get<boolean>("first-run-done");
-        if (done) {
-          const win = getCurrentWebviewWindow();
-          await win.hide();
-        }
-      } catch (err) {
-        error(`[Kokoro UI] Tutorial init failed: ${err}`);
-      }
-    })();
-  }, []);
 
   const handleDismiss = async () => {
     try {
@@ -39,78 +22,84 @@ export default function Tutorial() {
   const shortcutKey = isMac ? "⌘ + Shift + Q" : "Win + Shift + Q";
 
   return (
-    <div className="h-full flex items-center justify-center bg-[#1A1A1A] cursor-move" onMouseDown={handleDrag}>
-      <div className="max-w-sm w-full mx-4 animate-fade-in bg-[#2D2D2D] border border-white/10 p-8 rounded-[32px] cursor-default" onMouseDown={(e) => e.stopPropagation()}>
-        {/* Icon */}
-        <div className="flex justify-center mb-6">
-          <div className="w-16 h-16 rounded-3xl bg-[#1C2B41] flex items-center justify-center shadow-lg">
-            <span className="text-3xl">🎙️</span>
+    <div className="window-wrapper" data-tauri-drag-region>
+      <div 
+        className="content-container w-[520px] h-[580px] flex items-center justify-center cursor-default bg-[#1A1A1A] !overflow-visible" 
+        data-tauri-drag-region 
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {/* Overlapping Icon */}
+        <div className="absolute -top-10 left-1/2 -translate-x-1/2 z-50" data-tauri-drag-region>
+          <div className="w-24 h-24 rounded-[32px] bg-[#1C2B41] flex items-center justify-center shadow-2xl relative" data-tauri-drag-region>
+            <span className="text-7xl select-none" data-tauri-drag-region>🎙️</span>
           </div>
         </div>
 
-        {/* Title */}
-        <h1 className="text-lg font-bold text-white text-center mb-1">
-          Welcome to Kokoro TTS
-        </h1>
-        <p className="text-xs text-white/40 text-center mb-8">
-          The fast, 100% local clipboard reader.
-        </p>
+        <div className="w-full px-12 py-12 mt-8" data-tauri-drag-region>
+          {/* Title */}
+          <h1 className="text-3xl font-bold text-white text-center mb-2 tracking-tight" data-tauri-drag-region>
+            Welcome to Kokoro TTS
+          </h1>
+          <p className="text-base text-white/40 text-center mb-12" data-tauri-drag-region>
+            The fast, 100% local clipboard reader.
+          </p>
 
-        {/* Steps */}
-        <div className="space-y-5 mb-10">
-          <div className="flex items-start gap-4">
-            <div className="w-6 h-6 rounded-full bg-[#8AB4F8]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <span className="text-[10px] font-bold text-[#8AB4F8]">1</span>
+          {/* Steps */}
+          <div className="space-y-8 mb-12" data-tauri-drag-region>
+            <div className="flex items-start gap-6">
+              <div className="w-10 h-10 rounded-full bg-[#8AB4F8]/10 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">
+                <span className="text-sm font-bold text-[#8AB4F8]">1</span>
+              </div>
+              <div>
+                <p className="text-[19px] text-white/90 font-semibold tracking-tight">Find the tray icon</p>
+                <p className="text-[15px] text-white/30 mt-1 leading-relaxed">
+                  Kokoro lives in your {isMac ? "menu bar" : "system tray"} at the{" "}
+                  {isMac ? "top" : "bottom"}-right.
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-[13px] text-white/80 font-semibold tracking-tight">Find the tray icon</p>
-              <p className="text-[11px] text-white/30 mt-0.5 leading-relaxed">
-                Kokoro lives in your {isMac ? "menu bar" : "system tray"} at the{" "}
-                {isMac ? "top" : "bottom"}-right.
-              </p>
+
+            <div className="flex items-start gap-6">
+              <div className="w-10 h-10 rounded-full bg-[#8AB4F8]/10 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">
+                <span className="text-sm font-bold text-[#8AB4F8]">2</span>
+              </div>
+              <div>
+                <p className="text-[19px] text-white/90 font-semibold tracking-tight">Copy & press shortcut</p>
+                <p className="text-[15px] text-white/30 mt-1 leading-relaxed">
+                  Copy text to clipboard, then press{" "}
+                  <kbd className="px-2.5 py-0.5 rounded-lg bg-white/5 text-white/50 font-mono text-xs border border-white/5 ml-1">
+                    {shortcutKey}
+                  </kbd>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-6">
+              <div className="w-10 h-10 rounded-full bg-[#8AB4F8]/10 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">
+                <span className="text-sm font-bold text-[#8AB4F8]">3</span>
+              </div>
+              <div>
+                <p className="text-[19px] text-white/90 font-semibold tracking-tight">Control playback</p>
+                <p className="text-[15px] text-white/30 mt-1 leading-relaxed">
+                  A small pill widget will appear near your cursor. Use it to play/stop or change speed.
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-start gap-4">
-            <div className="w-6 h-6 rounded-full bg-[#8AB4F8]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <span className="text-[10px] font-bold text-[#8AB4F8]">2</span>
-            </div>
-            <div>
-              <p className="text-[13px] text-white/80 font-semibold tracking-tight">Select & press shortcut</p>
-              <p className="text-[11px] text-white/30 mt-0.5 leading-relaxed">
-                Highlight text, then press{" "}
-                <kbd className="px-1.5 py-0.5 rounded-md bg-white/5 text-white/50 font-mono text-[9px] border border-white/5">
-                  {shortcutKey}
-                </kbd>
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-4">
-            <div className="w-6 h-6 rounded-full bg-[#8AB4F8]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <span className="text-[10px] font-bold text-[#8AB4F8]">3</span>
-            </div>
-            <div>
-              <p className="text-[13px] text-white/80 font-semibold tracking-tight">Control playback</p>
-              <p className="text-[11px] text-white/30 mt-0.5 leading-relaxed">
-                A small pill widget will appear near your cursor. Use it to play/stop or change speed.
-              </p>
-            </div>
-          </div>
+          {/* Dismiss */}
+          <button
+            onClick={handleDismiss}
+            className="
+              w-full py-5 rounded-full font-bold text-lg
+              bg-[#8AB4F8] hover:bg-[#AECBFA]
+              text-[#202124] shadow-xl
+              active:scale-[0.98] transition-smooth
+            "
+          >
+            Sounds good!
+          </button>
         </div>
-
-        {/* Dismiss */}
-        <button
-          onClick={handleDismiss}
-          className="
-            w-full py-3.5 rounded-full font-bold text-sm
-            bg-[#8AB4F8] hover:bg-[#AECBFA]
-            text-[#202124] shadow-md
-            active:scale-[0.98] transition-smooth
-          "
-        >
-          Sounds good
-        </button>
       </div>
     </div>
   );

@@ -1,5 +1,7 @@
-use tauri::{AppHandle, Emitter};
+use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
+use std::time::Duration;
 
 /// Manages the lifecycle of the Kokoro TTS sidecar process.
 ///
@@ -8,11 +10,15 @@ use tauri_plugin_shell::{process::CommandChild, ShellExt};
 /// to ensure we never leave ghost processes behind.
 pub struct SidecarManager {
     child: Option<CommandChild>,
+    pub status: Arc<Mutex<String>>,
 }
 
 impl SidecarManager {
     pub fn new() -> Self {
-        Self { child: None }
+        Self { 
+            child: None,
+            status: Arc::new(Mutex::new("disconnected".into())),
+        }
     }
 
     /// Spawn the Kokoro sidecar binary.
@@ -44,6 +50,12 @@ impl SidecarManager {
                 .args(["-Command", "Get-NetTCPConnection -LocalPort 8790 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"])
                 .output();
         }
+
+        {
+            let mut s = self.status.lock().unwrap();
+            *s = "starting".into();
+        }
+        let _ = app.emit("sidecar-status", "starting");
 
         println!("[Kokoro] Attempting to spawn sidecar...");
 
@@ -145,9 +157,51 @@ impl SidecarManager {
             }
         });
 
-        println!("[Kokoro] Sidecar process managed successfully");
-
         self.child = Some(child);
+        
+        // ─── Health Check Polling ───
+        let handle_for_health = app.clone();
+        let status_arc = Arc::clone(&self.status);
+        tauri::async_runtime::spawn(async move {
+            let client = reqwest::Client::builder()
+                .timeout(Duration::from_millis(500))
+                .build()
+                .unwrap_or_default();
+            
+            let mut attempts = 0;
+            let max_attempts = 100; // ~50 seconds total
+            
+            while attempts < max_attempts {
+                match client.get("http://127.0.0.1:8790/health").send().await {
+                    Ok(res) if res.status().is_success() => {
+                        println!("[Kokoro] Sidecar is healthy and ready.");
+                        {
+                            let mut s = status_arc.lock().unwrap();
+                            *s = "ready".into();
+                        }
+                        let _ = handle_for_health.emit("sidecar-status", "ready");
+                        break;
+                    }
+                    _ => {
+                        attempts += 1;
+                        if attempts % 10 == 0 {
+                            println!("[Kokoro] Waiting for sidecar health check... (attempt {})", attempts);
+                        }
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                }
+            }
+            
+            if attempts >= max_attempts {
+                eprintln!("[Kokoro] Sidecar health check timed out.");
+                {
+                    let mut s = status_arc.lock().unwrap();
+                    *s = "error:timeout".into();
+                }
+                let _ = handle_for_health.emit("sidecar-status", "error:timeout");
+            }
+        });
+
         Ok(())
     }
 
@@ -158,6 +212,8 @@ impl SidecarManager {
             match child.kill() {
                 Ok(()) => {
                     println!("[Kokoro] Sidecar killed (PID: {})", pid);
+                    let mut s = self.status.lock().unwrap();
+                    *s = "disconnected".into();
                 }
                 Err(e) => {
                     eprintln!("[Kokoro] Failed to kill sidecar: {e}");

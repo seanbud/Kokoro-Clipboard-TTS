@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capabilities for Kokoro Clipboard TTS",
-  "windows": ["reader", "settings", "tutorial"],
+  "windows": ["reader", "settings", "tutorial", "splash"],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -12,6 +12,7 @@
     "core:window:allow-set-position",
     "core:window:allow-set-focus",
     "core:window:allow-set-size",
+    "core:window:allow-start-dragging",
     "opener:default",
     "global-shortcut:default",
     "global-shortcut:allow-register",

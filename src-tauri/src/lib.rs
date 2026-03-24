@@ -100,6 +100,13 @@ async fn test_audio(volume: f32) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn get_sidecar_status(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let mgr = state.sidecar.lock().unwrap();
+    let status = mgr.status.lock().unwrap();
+    Ok(status.clone())
+}
+
+#[tauri::command]
 async fn move_reader_window(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("reader") {
         win.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
@@ -172,7 +179,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                         WebviewUrl::App("/".into()),
                     )
                     .title("Welcome to Kokoro TTS")
-                    .inner_size(480.0, 420.0)
+                    .inner_size(520.0, 480.0)
                     .resizable(false)
                     .center()
                     .decorations(false)
@@ -223,6 +230,7 @@ pub fn run() {
             get_audio_devices,
             set_audio_device,
             test_audio,
+            get_sidecar_status,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
