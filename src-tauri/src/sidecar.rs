@@ -6,7 +6,7 @@ use std::time::Duration;
 /// Manages the lifecycle of the Kokoro TTS sidecar process.
 ///
 /// The sidecar is a PyInstaller-built Python executable that runs a local
-/// HTTP server on port 8787. This struct wraps spawning and killing it
+/// HTTP server on port 8790. This struct wraps spawning and killing it
 /// to ensure we never leave ghost processes behind.
 pub struct SidecarManager {
     child: Option<CommandChild>,

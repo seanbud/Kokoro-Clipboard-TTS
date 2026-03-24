@@ -1,6 +1,12 @@
 flask
 sounddevice
+soundfile
 numpy
 kokoro>=0.6.0
 onnxruntime
+misaki
+phonemizer
+language_tags
+espeakng_loader
+huggingface_hub
 pyinstaller

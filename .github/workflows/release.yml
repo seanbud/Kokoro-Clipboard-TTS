@@ -44,9 +44,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install flask sounddevice numpy pyinstaller
-          # Note: kokoro might need specific install steps depending on its lib
-          # pip install kokoro
+          pip install -r requirements.txt
 
       - name: Download Kokoro Model Weights
         shell: bash
@@ -65,7 +63,18 @@ jobs:
           else
             SEP=":"
           fi
-          pyinstaller --onefile --name kokoro --add-data "sidecar/model${SEP}model" sidecar/kokoro_server.py
+          pyinstaller --onefile --name kokoro \
+            --add-data "sidecar/model${SEP}model" \
+            --collect-all onnxruntime \
+            --collect-all kokoro \
+            --collect-all misaki \
+            --collect-all phonemizer \
+            --collect-all language_tags \
+            --collect-all espeakng_loader \
+            --collect-all huggingface_hub \
+            --collect-all sounddevice \
+            --collect-all soundfile \
+            sidecar/kokoro_server.py
           mkdir -p src-tauri/binaries
           if [ "${{ matrix.platform }}" == "windows-latest" ]; then
             mv dist/kokoro.exe src-tauri/binaries/kokoro-x86_64-pc-windows-msvc.exe
