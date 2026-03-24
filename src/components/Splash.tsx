@@ -24,8 +24,8 @@ export default function Splash() {
       const s = event.payload;
       console.log("[Splash] Status update:", s);
       if (s === "ready") {
-        setStatus("Ready");
-        setTimeout(() => active && handleReady(), 800);
+        setStatus("Ready!");
+        setTimeout(() => active && handleReady(), 1800);
       } else if (s === "starting") {
         setStatus("Starting TTS Engine");
       } else if (s.startsWith("error")) {
@@ -38,8 +38,8 @@ export default function Splash() {
       if (!active) return;
       console.log("[Splash] Initial status:", s);
       if (s === "ready") {
-        setStatus("Ready");
-        setTimeout(() => active && handleReady(), 800);
+        setStatus("Ready!");
+        setTimeout(() => active && handleReady(), 1800);
       } else if (s === "starting") {
         setStatus("Starting TTS Engine");
       }
@@ -119,10 +119,13 @@ export default function Splash() {
           </h1>
           <div 
             key={status} // Triggers animation on status change
-            className="text-white/40 text-[11px] uppercase tracking-widest font-bold min-h-[1.5rem] animate-text-update" 
+            className={`
+              text-[11px] uppercase tracking-widest font-bold min-h-[1.5rem] animate-text-update
+              ${status.includes("Ready") ? "text-emerald-400" : "text-white/40"}
+            `}
             data-tauri-drag-region
           >
-            {status}{status === "Ready" || status.includes("Error") ? "" : dots}
+            {status}{status.includes("Ready") || status.includes("Error") ? "" : dots}
           </div>
         </div>
       </div>
