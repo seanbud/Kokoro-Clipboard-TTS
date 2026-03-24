@@ -235,13 +235,16 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            // ── Spawn TTS sidecar ──
+            // ── Spawn TTS sidecar (in background) ──
             {
-                let state = handle.state::<AppState>();
-                let mut mgr = state.sidecar.lock().unwrap();
-                if let Err(e) = mgr.spawn(&handle) {
-                    eprintln!("[Kokoro] Failed to spawn TTS sidecar: {e}");
-                }
+                let handle_for_sidecar = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state = handle_for_sidecar.state::<AppState>();
+                    let mut mgr = state.sidecar.lock().unwrap();
+                    if let Err(e) = mgr.spawn(&handle_for_sidecar) {
+                        eprintln!("[Kokoro] Failed to spawn TTS sidecar: {e}");
+                    }
+                });
             }
 
             // ── Setup System Tray ──
