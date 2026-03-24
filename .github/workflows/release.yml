@@ -18,7 +18,7 @@ jobs:
         include:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-          - platform: macos-latest
+          - platform: macos-13
             target: universal-apple-darwin
 
     runs-on: ${{ matrix.platform }}
