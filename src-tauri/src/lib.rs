@@ -107,6 +107,12 @@ async fn get_sidecar_status(state: tauri::State<'_, AppState>) -> Result<String,
 }
 
 #[tauri::command]
+async fn start_sidecar(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let mut mgr = state.sidecar.lock().unwrap();
+    mgr.spawn(&app)
+}
+
+#[tauri::command]
 async fn move_reader_window(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("reader") {
         win.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
@@ -231,6 +237,7 @@ pub fn run() {
             set_audio_device,
             test_audio,
             get_sidecar_status,
+            start_sidecar,
         ])
         .setup(|app| {
             // ── Show splash window IMMEDIATELY ──
@@ -238,17 +245,6 @@ pub fn run() {
                 let _ = splash.show();
             }
             let handle = app.handle().clone();
-            // ── Spawn TTS sidecar (in background) ──
-            {
-                let handle_for_sidecar = handle.clone();
-                tauri::async_runtime::spawn(async move {
-                    let state = handle_for_sidecar.state::<AppState>();
-                    let mut mgr = state.sidecar.lock().unwrap();
-                    if let Err(e) = mgr.spawn(&handle_for_sidecar) {
-                        eprintln!("[Kokoro] Failed to spawn TTS sidecar: {e}");
-                    }
-                });
-            }
 
             // ── Setup System Tray ──
             setup_tray(&handle)?;

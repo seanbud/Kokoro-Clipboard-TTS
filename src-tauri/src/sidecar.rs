@@ -36,7 +36,9 @@ impl SidecarManager {
         // orphaned in the background locking files and ports. Let's kill any ghosts first.
         #[cfg(target_os = "windows")]
         {
-            // Kill by image name (for bundled builds)
+            // Must complete BEFORE we spawn, so use blocking .output().
+            // This is safe because start_sidecar is called from the frontend
+            // after the first paint, not from the Rust setup hook.
             let _ = std::process::Command::new("taskkill")
                 .args(["/F", "/IM", "kokoro-x86_64-pc-windows-msvc.exe", "/T"])
                 .output();
@@ -44,11 +46,13 @@ impl SidecarManager {
                 .args(["/F", "/IM", "kokoro.exe", "/T"])
                 .output();
                 
-            // Aggressive: Kill anything holding port 8790 (where our sidecar lives)
-            // This is the definitive way to clear a zombie python.exe in dev mode.
+            // Kill anything holding port 8790 (zombie python.exe from dev mode)
             let _ = std::process::Command::new("powershell")
                 .args(["-Command", "Get-NetTCPConnection -LocalPort 8790 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"])
                 .output();
+            
+            // Brief pause to let the port fully release
+            std::thread::sleep(Duration::from_millis(200));
         }
 
         {
