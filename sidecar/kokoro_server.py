@@ -10,8 +10,8 @@ from flask import Flask, request, jsonify
 # can terminate before a block-buffered stdout drains, causing log truncation.
 try:
     sys.stdout.reconfigure(write_through=True)
-except AttributeError:
-    pass  # frozen exe may not support reconfigure; best-effort
+except Exception:
+    pass  # frozen exe may raise UnsupportedOperation or other errors; best-effort
 
 # Force unbuffered output so Windows doesn't swallow logs until the buffer fills
 def print(*args, **kwargs):
@@ -24,8 +24,14 @@ def print(*args, **kwargs):
 # PyInstaller --onefile process crashes before the buffer is flushed.
 sys.stderr = sys.stdout
 
-import sounddevice as sd
-import numpy as np
+try:
+    import sounddevice as sd
+    import numpy as np
+except Exception:
+    import traceback
+    traceback.print_exc()
+    sys.stdout.flush()
+    sys.exit(1)
 
 # Kokoro-82M is small, but needs its weights and voices.
 # We'll handle both development and frozen (PyInstaller executable) paths.
