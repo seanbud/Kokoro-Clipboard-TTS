@@ -29,8 +29,10 @@ try:
     import numpy as np
 except Exception:
     import traceback
-    traceback.print_exc()
-    sys.stdout.flush()
+    import time
+    for line in traceback.format_exc().splitlines():
+        print(line)
+    time.sleep(1)  # give the Tauri pipe reader time to drain before exit
     sys.exit(1)
 
 # Kokoro-82M is small, but needs its weights and voices.
@@ -51,8 +53,10 @@ try:
     from kokoro import KPipeline
 except Exception:
     import traceback
-    traceback.print_exc()
-    sys.stdout.flush()
+    import time
+    for line in traceback.format_exc().splitlines():
+        print(line)
+    time.sleep(1)  # give the Tauri pipe reader time to drain before exit
     sys.exit(1)
 
 app = Flask(__name__)
