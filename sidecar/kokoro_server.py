@@ -24,6 +24,33 @@ def print(*args, **kwargs):
 # PyInstaller --onefile process crashes before the buffer is flushed.
 sys.stderr = sys.stdout
 
+# On Windows, PyInstaller --onefile extracts everything to a temp directory
+# (sys._MEIPASS). Windows does NOT automatically search subdirectories of
+# _MEIPASS when loading DLLs, so packages like espeak-ng, torch, and
+# sounddevice fail to find their native libraries.  We register every
+# relevant subdirectory via os.add_dll_directory() so the OS loader can
+# find them.  We also set ESPEAK_DATA_PATH so phonemizer/misaki can locate
+# the espeak-ng voice data inside the bundle.
+if sys.platform == "win32" and getattr(sys, "frozen", False):
+    _bundle = sys._MEIPASS
+    # Directories known to contain native DLLs in a collected PyInstaller bundle
+    _dll_search = [
+        _bundle,
+        os.path.join(_bundle, "torch", "lib"),          # torch_cpu.dll, c10.dll …
+        os.path.join(_bundle, "espeakng_loader"),        # espeak-ng.dll
+        os.path.join(_bundle, "onnxruntime", "capi"),    # onnxruntime.dll
+    ]
+    for _d in _dll_search:
+        if os.path.isdir(_d):
+            try:
+                os.add_dll_directory(_d)
+            except Exception:
+                pass
+    # Point espeak-ng to its data directory so phonemizer initialises correctly
+    _espeak_data = os.path.join(_bundle, "espeakng_loader", "espeak-ng-data")
+    if os.path.isdir(_espeak_data):
+        os.environ.setdefault("ESPEAK_DATA_PATH", _espeak_data)
+
 try:
     import sounddevice as sd
     import numpy as np
@@ -163,8 +190,13 @@ def tts():
                 if i is None: # End of stream
                     break
                 
-                # Convert to NumPy/float32 and apply volume
-                played_audio = (audio * volume).cpu().numpy().astype(np.float32)
+                # Convert to NumPy/float32 and apply volume.
+                # kokoro may return a torch tensor (has .cpu()) or a numpy
+                # array depending on version — handle both.
+                if hasattr(audio, "cpu"):
+                    played_audio = (audio * volume).cpu().numpy().astype(np.float32)
+                else:
+                    played_audio = (np.asarray(audio) * volume).astype(np.float32)
                 
                 # Print status for frontend parsing
                 max_val = float(np.max(np.abs(played_audio)))
