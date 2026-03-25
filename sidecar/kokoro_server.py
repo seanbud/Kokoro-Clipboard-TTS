@@ -5,15 +5,23 @@ import threading
 import argparse
 from flask import Flask, request, jsonify
 
+# Make stdout write-through (unbuffered) so every write is flushed to disk
+# immediately. This is critical on Windows where PyInstaller --onefile processes
+# can terminate before a block-buffered stdout drains, causing log truncation.
+try:
+    sys.stdout.reconfigure(write_through=True)
+except AttributeError:
+    pass  # frozen exe may not support reconfigure; best-effort
+
 # Force unbuffered output so Windows doesn't swallow logs until the buffer fills
 def print(*args, **kwargs):
     kwargs.setdefault('flush', True)
     builtins.print(*args, **kwargs)
 
 # Redirect stderr to stdout so that Python tracebacks and error output are
-# captured by the Tauri sidecar log (which reads stdout line-by-line with
-# flush=True). Without this, buffered stderr output is often lost on Windows
-# when a PyInstaller --onefile process crashes before the buffer is flushed.
+# captured by the Tauri sidecar log (which reads stdout line-by-line).
+# Without this, buffered stderr output is often lost on Windows when a
+# PyInstaller --onefile process crashes before the buffer is flushed.
 sys.stderr = sys.stdout
 
 import sounddevice as sd
@@ -33,7 +41,13 @@ def get_bundle_dir():
 BUNDLE_DIR = get_bundle_dir()
 MODEL_DIR = os.path.join(BUNDLE_DIR, "model")
 
-from kokoro import KPipeline
+try:
+    from kokoro import KPipeline
+except Exception:
+    import traceback
+    traceback.print_exc()
+    sys.stdout.flush()
+    sys.exit(1)
 
 app = Flask(__name__)
 stop_event = threading.Event()
