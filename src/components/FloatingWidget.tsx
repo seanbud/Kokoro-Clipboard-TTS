@@ -9,7 +9,6 @@ import { cleanTextForTTS } from "../utils/textCleaner";
 // ─── Speed Notches (Expanded as requested) ──────────────────────────────────
 const SPEED_NOTCHES = [0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3] as const;
 const DEFAULT_SPEED_INDEX = 4; // 1.0x
-const ERROR_DISPLAY_LENGTH = 24; // chars shown inline before truncating to "…"
 
 // ─── Icons ──────────────────────────────────────────────────────────────────
 const PlayIcon = () => (
@@ -224,18 +223,13 @@ export default function FloatingWidget() {
 
         {/* Status Hub */}
         <div className="flex flex-col px-1 min-w-[64px] pointer-events-none" data-tauri-drag-region>
-          <span className={`text-[8px] font-black uppercase tracking-[0.15em] leading-none transition-smooth ${statusColor}`} data-tauri-drag-region>
+          <span
+            className={`text-[8px] font-black uppercase tracking-[0.15em] leading-none transition-smooth ${statusColor} ${status === 'TTS Error' && errorMessage ? 'pointer-events-auto cursor-help' : ''}`}
+            title={status === 'TTS Error' && errorMessage ? errorMessage : undefined}
+            data-tauri-drag-region
+          >
             {status}
           </span>
-          {status === 'TTS Error' && errorMessage && (
-            <span
-              className="text-[7px] text-red-300/60 leading-tight mt-0.5 truncate max-w-[64px] pointer-events-auto cursor-help"
-              title={errorMessage}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              {errorMessage.length > ERROR_DISPLAY_LENGTH ? errorMessage.substring(0, ERROR_DISPLAY_LENGTH) + '…' : errorMessage}
-            </span>
-          )}
         </div>
 
         {/* Speed Bubble */}
