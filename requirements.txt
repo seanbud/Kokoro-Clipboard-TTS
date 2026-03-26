@@ -8,7 +8,7 @@ loguru
 transformers
 onnxruntime
 misaki[en]>=0.9.4
-phonemizer
+phonemizer-fork==3.3.2
 language_tags
 espeakng_loader
 huggingface_hub
