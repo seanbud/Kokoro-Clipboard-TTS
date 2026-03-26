@@ -148,6 +148,7 @@ impl SidecarManager {
         };
 
         let log_file_arc2 = Arc::clone(&log_file_arc);
+        let log_path_for_errors = log_path.clone();
         let handle_for_stdout = app.clone();
         tauri::async_runtime::spawn(async move {
             use tauri_plugin_shell::process::CommandEvent;
@@ -167,7 +168,19 @@ impl SidecarManager {
                         } else if line_str.contains("[STATUS] FINISHED") {
                             let _ = handle_for_stdout.emit("tts-finished", ());
                         } else if line_str.contains("[STATUS] ERROR") {
-                            let _ = handle_for_stdout.emit("tts-error", line_str.replace("[STATUS] ERROR:", "").trim());
+                            let replaced = line_str.replace("[STATUS] ERROR:", "");
+                            let error_msg = replaced.trim().to_string();
+                            let _ = handle_for_stdout.emit("tts-error", error_msg.clone());
+                            // Append TTS errors to log file for post-startup diagnostics.
+                            // The startup log is closed after the engine is ready, but errors
+                            // are always worth capturing so users can share them.
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(&log_path_for_errors)
+                            {
+                                let _ = writeln!(f, "[TTS ERROR] {}", error_msg);
+                            }
                         }
                         print!("{}", line_str);
                     }
@@ -188,6 +201,14 @@ impl SidecarManager {
                     CommandEvent::Error(err) => {
                         eprintln!("[Kokoro] Sidecar event error: {}", err);
                         let _ = handle_for_stdout.emit("tts-error", err.to_string());
+                        // Append process-level errors to log file too
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&log_path_for_errors)
+                        {
+                            let _ = writeln!(f, "[SIDECAR ERROR] {}", err);
+                        }
                     }
                     _ => {}
                 }

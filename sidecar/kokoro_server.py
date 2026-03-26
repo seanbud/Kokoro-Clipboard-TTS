@@ -146,7 +146,14 @@ def tts():
     if not text:
         return jsonify({"error": "No text provided"}), 400
         
-    print(f"[Sidecar] Synthesizing: '{text[:20]}...' (V:{voice}, S:{speed}, Vol:{volume})")
+    meta = f"V:{voice}, S:{speed}, Vol:{volume}"
+    if not getattr(sys, 'frozen', False):
+        # Dev mode: include a snippet of the text for easier debugging in the live console.
+        # This is intentionally NOT printed in release builds so clipboard content
+        # never appears in log files on user machines.
+        print(f"[Sidecar] Synthesizing: '{text[:20]}...' ({meta})")
+    else:
+        print(f"[Sidecar] Synthesizing ({meta}, chars:{len(text)})")
     
     # Small pause to let previous workers exit gracefully
     import time
