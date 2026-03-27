@@ -220,8 +220,6 @@ impl SidecarManager {
         // ─── Health Check Polling ───
         let handle_for_health = app.clone();
         let status_arc = Arc::clone(&self.status);
-        // Share the log file arc so we can close the log the moment the engine is ready.
-        let log_file_arc_for_health = Arc::clone(&log_file_arc);
         tauri::async_runtime::spawn(async move {
             let client = reqwest::Client::builder()
                 .timeout(Duration::from_millis(500))
@@ -240,10 +238,7 @@ impl SidecarManager {
                             *s = "ready".into();
                         }
                         let _ = handle_for_health.emit("sidecar-status", "ready");
-                        // Close the log file — startup succeeded, no need to keep logging.
-                        if let Ok(mut guard) = log_file_arc_for_health.lock() {
-                            drop(guard.take());
-                        }
+                        // Keep the log file open so any post-startup crashes are still captured.
                         break;
                     }
                     _ => {
