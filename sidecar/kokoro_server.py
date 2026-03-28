@@ -128,7 +128,6 @@ def cleanup_zombies():
         pass
 
 # Initialize
-cleanup_zombies()
 
 @app.route("/tts", methods=["POST"])
 def tts():
@@ -295,9 +294,14 @@ def health():
     return jsonify({"status": "ok", "sidecar": "kokoro-tts"})
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8790)
     args = parser.parse_args()
+    
+    cleanup_zombies()
     
     print(f"[Sidecar] Starting Kokoro TTS server on port {args.port}")
     # Use threaded=True to ensure one hanging request doesn't block the whole server
