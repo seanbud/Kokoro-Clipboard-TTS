@@ -41,6 +41,7 @@ export default function FloatingWidget() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [speedIndex, setSpeedIndex] = useState(DEFAULT_SPEED_INDEX);
   const [status, setStatus] = useState<Status>("Idle");
+  const [errorMessage, setErrorMessage] = useState<string>("");
   const storeRef = useRef<Awaited<ReturnType<typeof load>> | null>(null);
 
   const speed = SPEED_NOTCHES[speedIndex];
@@ -69,7 +70,9 @@ export default function FloatingWidget() {
       setIsPlaying(false);
     });
     const unlistenError = listen<string>("tts-error", (event) => {
-      console.error("[Kokoro UI] Sidecar error:", event.payload);
+      const msg = event.payload || "Unknown error";
+      console.error("[Kokoro UI] Sidecar error:", msg);
+      setErrorMessage(msg);
       setStatus("TTS Error");
       setIsPlaying(false);
     });
@@ -91,6 +94,7 @@ export default function FloatingWidget() {
     try {
       setStatus("Generating");
       setIsPlaying(true);
+      setErrorMessage(""); // clear any previous error
       
       const store = storeRef.current || await load("settings.json", { defaults: {}, autoSave: true });
       const voice = (await store.get<string>("voice")) || "am_fenrir";
@@ -104,7 +108,9 @@ export default function FloatingWidget() {
       });
       // status remains "Generating" until "tts-speaking" event arrives
     } catch (err) {
-      error(`[Kokoro UI] Invoke error: ${err}`);
+      const msg = String(err);
+      error(`[Kokoro UI] Invoke error: ${msg}`);
+      setErrorMessage(msg);
       setIsPlaying(false);
       setStatus("TTS Error");
     }
@@ -217,7 +223,11 @@ export default function FloatingWidget() {
 
         {/* Status Hub */}
         <div className="flex flex-col px-1 min-w-[64px] pointer-events-none" data-tauri-drag-region>
-          <span className={`text-[8px] font-black uppercase tracking-[0.15em] leading-none transition-smooth ${statusColor}`} data-tauri-drag-region>
+          <span
+            className={`text-[8px] font-black uppercase tracking-[0.15em] leading-none transition-smooth ${statusColor} ${status === 'TTS Error' && errorMessage ? 'pointer-events-auto cursor-help' : ''}`}
+            title={status === 'TTS Error' && errorMessage ? errorMessage : undefined}
+            data-tauri-drag-region
+          >
             {status}
           </span>
         </div>

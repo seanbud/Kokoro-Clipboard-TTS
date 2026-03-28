@@ -3,6 +3,7 @@ import { load } from "@tauri-apps/plugin-store";
 import { register, unregister, isRegistered } from "@tauri-apps/plugin-global-shortcut";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 
 // ─── Kokoro voice presets ──────────────────────────────────────────────────
 const VOICE_PRESETS = [
@@ -118,6 +119,24 @@ export default function SettingsWindow() {
       setRecording(false);
     }
   }, [recording]);
+
+  // ── Open Logs Folder ──
+  const handleOpenLogsFolder = useCallback(async () => {
+    try {
+      const logPath = await invoke<string>("get_sidecar_log_path");
+      if (!logPath) return;
+      try {
+        await revealItemInDir(logPath);
+      } catch {
+        const sepIdx = Math.max(logPath.lastIndexOf("/"), logPath.lastIndexOf("\\"));
+        if (sepIdx > 0) {
+          await openPath(logPath.substring(0, sepIdx)).catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.error("[Kokoro UI] Failed to open logs folder:", e);
+    }
+  }, []);
 
   return (
     <div className="h-full surface-low text-white flex flex-col">
@@ -249,6 +268,14 @@ export default function SettingsWindow() {
           className={`w-full py-3.5 rounded-full font-bold text-sm tracking-wide transition-smooth shadow-lg ${saved ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-[#8AB4F8] hover:bg-[#AECBFA] text-[#202124] active:scale-[0.98]"}`}
         >
           {saved ? "✓ Saved" : "Save Changes"}
+        </button>
+
+        {/* Open Logs Folder */}
+        <button
+          onClick={handleOpenLogsFolder}
+          className="w-full py-2.5 rounded-full text-xs font-semibold tracking-wide transition-smooth bg-white/5 border border-white/10 hover:bg-white/10 text-white/40 hover:text-white/70"
+        >
+          Open Logs Folder
         </button>
       </div>
     </div>

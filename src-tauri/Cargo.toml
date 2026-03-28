@@ -1,6 +1,6 @@
 [package]
 name = "kokoro-clipboard-tts"
-version = "0.5.3"
+version = "0.5.4"
 description = "Clipboard TTS powered by Kokoro-82M"
 authors = ["you"]
 edition = "2021"

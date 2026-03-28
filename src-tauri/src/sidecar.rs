@@ -148,6 +148,7 @@ impl SidecarManager {
         };
 
         let log_file_arc2 = Arc::clone(&log_file_arc);
+        let log_path_for_errors = log_path.clone();
         let handle_for_stdout = app.clone();
         tauri::async_runtime::spawn(async move {
             use tauri_plugin_shell::process::CommandEvent;
@@ -167,7 +168,19 @@ impl SidecarManager {
                         } else if line_str.contains("[STATUS] FINISHED") {
                             let _ = handle_for_stdout.emit("tts-finished", ());
                         } else if line_str.contains("[STATUS] ERROR") {
-                            let _ = handle_for_stdout.emit("tts-error", line_str.replace("[STATUS] ERROR:", "").trim());
+                            let replaced = line_str.replace("[STATUS] ERROR:", "");
+                            let error_msg = replaced.trim().to_string();
+                            let _ = handle_for_stdout.emit("tts-error", error_msg.clone());
+                            // Append TTS errors to log file for post-startup diagnostics.
+                            // The startup log is closed after the engine is ready, but errors
+                            // are always worth capturing so users can share them.
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(&log_path_for_errors)
+                            {
+                                let _ = writeln!(f, "[TTS ERROR] {}", error_msg);
+                            }
                         }
                         print!("{}", line_str);
                     }
@@ -188,6 +201,14 @@ impl SidecarManager {
                     CommandEvent::Error(err) => {
                         eprintln!("[Kokoro] Sidecar event error: {}", err);
                         let _ = handle_for_stdout.emit("tts-error", err.to_string());
+                        // Append process-level errors to log file too
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&log_path_for_errors)
+                        {
+                            let _ = writeln!(f, "[SIDECAR ERROR] {}", err);
+                        }
                     }
                     _ => {}
                 }
@@ -199,8 +220,6 @@ impl SidecarManager {
         // ─── Health Check Polling ───
         let handle_for_health = app.clone();
         let status_arc = Arc::clone(&self.status);
-        // Share the log file arc so we can close the log the moment the engine is ready.
-        let log_file_arc_for_health = Arc::clone(&log_file_arc);
         tauri::async_runtime::spawn(async move {
             let client = reqwest::Client::builder()
                 .timeout(Duration::from_millis(500))
@@ -219,10 +238,7 @@ impl SidecarManager {
                             *s = "ready".into();
                         }
                         let _ = handle_for_health.emit("sidecar-status", "ready");
-                        // Close the log file — startup succeeded, no need to keep logging.
-                        if let Ok(mut guard) = log_file_arc_for_health.lock() {
-                            drop(guard.take());
-                        }
+                        // Keep the log file open so any post-startup crashes are still captured.
                         break;
                     }
                     _ => {
