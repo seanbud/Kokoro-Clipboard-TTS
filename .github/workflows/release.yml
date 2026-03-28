@@ -45,6 +45,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
+          python -m spacy download en_core_web_sm
 
       - name: Download Kokoro Model Weights
         shell: bash
@@ -77,6 +78,8 @@ jobs:
             --collect-all torch \
             --collect-all loguru \
             --collect-all transformers \
+            --collect-all spacy \
+            --collect-all en_core_web_sm \
             sidecar/kokoro_server.py
           mkdir -p src-tauri/binaries
           if [ "${{ matrix.platform }}" == "windows-latest" ]; then

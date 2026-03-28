@@ -35,6 +35,8 @@ def run():
     print("Installing dependencies into the isolated virtual environment...")
     subprocess.check_call([venv_python, "-m", "pip", "install", "-U", "pip"])
     subprocess.check_call([venv_python, "-m", "pip", "install", "-r", "requirements.txt"])
+    print("Installing spaCy en_core_web_sm model...")
+    subprocess.check_call([venv_python, "-m", "spacy", "download", "en_core_web_sm"])
 
     # 4. Build with PyInstaller
     print("Building sidecar executable...")
@@ -57,6 +59,8 @@ def run():
             "--collect-all", "torch",
             "--collect-all", "loguru",
             "--collect-all", "transformers",
+            "--collect-all", "spacy",
+            "--collect-all", "en_core_web_sm",
             "sidecar/kokoro_server.py"
         ])
     except Exception as e:
