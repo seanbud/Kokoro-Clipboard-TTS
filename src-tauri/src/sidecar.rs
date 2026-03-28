@@ -74,6 +74,27 @@ impl SidecarManager {
             std::thread::sleep(Duration::from_millis(200));
         }
 
+        #[cfg(not(target_os = "windows"))]
+        {
+            // MacOS / Linux ghost busting
+            let _ = std::process::Command::new("pkill")
+                .args(["-f", "kokoro_server.py"])
+                .output();
+            let _ = std::process::Command::new("pkill")
+                .args(["-f", "kokoro-universal-apple-darwin"])
+                .output();
+            let _ = std::process::Command::new("pkill")
+                .args(["-f", "kokoro-aarch64-apple-darwin"])
+                .output();
+                
+            // Forcefully free port 8790
+            let _ = std::process::Command::new("sh")
+                .args(["-c", "lsof -ti:8790 | xargs kill -9 2>/dev/null"])
+                .output();
+                
+            std::thread::sleep(Duration::from_millis(200));
+        }
+
         {
             let mut s = self.status.lock().unwrap();
             *s = "starting".into();
@@ -274,6 +295,14 @@ impl SidecarManager {
                 // Force kill the process tree to ensure spawned multiprocessing workers die
                 let _ = std::process::Command::new("taskkill")
                     .args(["/F", "/PID", &pid.to_string(), "/T"])
+                    .output();
+            }
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                // Force kill all direct child processes (multiprocessing workers)
+                let _ = std::process::Command::new("pkill")
+                    .args(["-9", "-P", &pid.to_string()])
                     .output();
             }
 
