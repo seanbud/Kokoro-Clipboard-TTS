@@ -265,10 +265,18 @@ impl SidecarManager {
         Ok(())
     }
 
-    /// Kill the sidecar process. Safe to call multiple times.
     pub fn kill(&mut self) {
         if let Some(child) = self.child.take() {
             let pid = child.pid();
+            
+            #[cfg(target_os = "windows")]
+            {
+                // Force kill the process tree to ensure spawned multiprocessing workers die
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/F", "/PID", &pid.to_string(), "/T"])
+                    .output();
+            }
+
             match child.kill() {
                 Ok(()) => {
                     println!("[Kokoro] Sidecar killed (PID: {})", pid);
@@ -276,7 +284,9 @@ impl SidecarManager {
                     *s = "disconnected".into();
                 }
                 Err(e) => {
-                    eprintln!("[Kokoro] Failed to kill sidecar: {e}");
+                    println!("[Kokoro] Sidecar killed or already dead (PID: {}). Error: {}", pid, e);
+                    let mut s = self.status.lock().unwrap();
+                    *s = "disconnected".into();
                 }
             }
         }
