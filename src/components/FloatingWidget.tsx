@@ -35,10 +35,9 @@ const CloseIcon = () => (
   </svg>
 );
 
-type Status = "Idle" | "Generating" | "Speaking" | "TTS Error";
+type Status = "Idle" | "Generating" | "Speaking" | "Paused" | "TTS Error";
 
 export default function FloatingWidget() {
-  const [isPlaying, setIsPlaying] = useState(false);
   const [speedIndex, setSpeedIndex] = useState(DEFAULT_SPEED_INDEX);
   const [status, setStatus] = useState<Status>("Idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
@@ -67,14 +66,12 @@ export default function FloatingWidget() {
     const unlistenSpeaking = listen("tts-speaking", () => setStatus("Speaking"));
     const unlistenFinished = listen("tts-finished", () => {
       setStatus("Idle");
-      setIsPlaying(false);
     });
     const unlistenError = listen<string>("tts-error", (event) => {
       const msg = event.payload || "Unknown error";
       console.error("[Kokoro UI] Sidecar error:", msg);
       setErrorMessage(msg);
       setStatus("TTS Error");
-      setIsPlaying(false);
     });
 
     return () => {
@@ -93,7 +90,6 @@ export default function FloatingWidget() {
   const runTTS = async (text: string) => {
     try {
       setStatus("Generating");
-      setIsPlaying(true);
       setErrorMessage(""); // clear any previous error
       
       const store = storeRef.current || await load("settings.json", { defaults: {}, autoSave: true });
@@ -111,7 +107,6 @@ export default function FloatingWidget() {
       const msg = String(err);
       error(`[Kokoro UI] Invoke error: ${msg}`);
       setErrorMessage(msg);
-      setIsPlaying(false);
       setStatus("TTS Error");
     }
   };
@@ -154,22 +149,25 @@ export default function FloatingWidget() {
 
   // ── Play / Pause ──
   const handlePlayPause = useCallback(async () => {
-    if (isPlaying && status === "Speaking") {
-      // If actually speaking, pause/stop it
-      await invoke("stop_tts").catch((err) => error(String(err)));
-      setIsPlaying(false);
-      setStatus("Idle");
+    if (status === "Speaking") {
+      // Pause without discarding position — resume will continue from the same spot
+      await invoke("pause_tts").catch((err) => error(String(err)));
+      setStatus("Paused");
+    } else if (status === "Paused") {
+      // Resume from where we paused
+      await invoke("resume_tts").catch((err) => error(String(err)));
+      setStatus("Speaking");
     } else {
+      // Idle / TTS Error — start (or restart) from the beginning
       if (lastAnalyzedText.current) {
         await runTTS(lastAnalyzedText.current);
       }
     }
-  }, [isPlaying, status, speed]);
+  }, [status, speed]);
 
   // ── Stop ──
   const handleStop = useCallback(async () => {
     await invoke("stop_tts").catch((err) => error(String(err)));
-    setIsPlaying(false);
     setStatus("Idle");
   }, []);
 
@@ -182,6 +180,7 @@ export default function FloatingWidget() {
   const statusColor = 
     status === 'Speaking' ? 'text-[#8AB4F8]' : 
     status === 'Generating' ? 'text-yellow-400' : 
+    status === 'Paused' ? 'text-purple-400' :
     status === 'TTS Error' ? 'text-red-400' : 
     'text-white/20';
 
@@ -195,7 +194,7 @@ export default function FloatingWidget() {
         <button
           onClick={handlePlayPause}
           onMouseDown={(e) => e.stopPropagation()}
-          title={isPlaying ? "Pause" : "Read Aloud"}
+          title={status === "Speaking" ? "Pause" : status === "Paused" ? "Resume" : "Read Aloud"}
           className="
             w-10 h-10 rounded-full flex items-center justify-center
             bg-[#8AB4F8] hover:bg-[#AECBFA]
@@ -203,7 +202,7 @@ export default function FloatingWidget() {
             text-[#202124] shadow-md cursor-default
           "
         >
-          {isPlaying ? <PauseIcon /> : <PlayIcon />}
+          {status === "Speaking" ? <PauseIcon /> : <PlayIcon />}
         </button>
 
         {/* Stop Button */}

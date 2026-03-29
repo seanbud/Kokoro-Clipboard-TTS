@@ -59,6 +59,28 @@ async fn stop_tts() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn pause_tts() -> Result<String, String> {
+    let client = reqwest::Client::new();
+    client
+        .post("http://127.0.0.1:8790/pause")
+        .send()
+        .await
+        .map_err(|e| format!("Pause request failed: {e}"))?;
+    Ok("paused".into())
+}
+
+#[tauri::command]
+async fn resume_tts() -> Result<String, String> {
+    let client = reqwest::Client::new();
+    client
+        .post("http://127.0.0.1:8790/resume")
+        .send()
+        .await
+        .map_err(|e| format!("Resume request failed: {e}"))?;
+    Ok("resumed".into())
+}
+
+#[tauri::command]
 async fn get_audio_devices() -> Result<serde_json::Value, String> {
     let client = reqwest::Client::new();
     let res = client
@@ -258,6 +280,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             send_to_tts,
             stop_tts,
+            pause_tts,
+            resume_tts,
             move_reader_window,
             hide_reader_window,
             get_audio_devices,
