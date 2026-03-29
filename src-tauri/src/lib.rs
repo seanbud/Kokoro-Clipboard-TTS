@@ -122,15 +122,25 @@ async fn start_sidecar(app: AppHandle, state: tauri::State<'_, AppState>) -> Res
 }
 
 #[tauri::command]
-async fn move_reader_window(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
+async fn ensure_reader_visible(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("reader") {
-        win.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-            x: x as i32,
-            y: y as i32,
-        }))
-        .map_err(|e| e.to_string())?;
-        win.show().map_err(|e| e.to_string())?;
-        win.set_focus().map_err(|e| e.to_string())?;
+        let is_visible = win.is_visible().unwrap_or(false);
+        if !is_visible {
+            // Move to cursor and show
+            if let Ok(cursor_pos) = app.cursor_position() {
+                let size = win.inner_size().unwrap_or(tauri::PhysicalSize { width: 320, height: 140 });
+                let x = (cursor_pos.x - (size.width as f64 / 2.0)) as i32;
+                let y = (cursor_pos.y - (size.height as f64 / 2.0)) as i32;
+                
+                win.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }))
+                    .map_err(|e| e.to_string())?;
+            }
+            win.show().map_err(|e| e.to_string())?;
+            win.set_focus().map_err(|e| e.to_string())?;
+        } else {
+            // Already visible, just focus it
+            win.set_focus().map_err(|e| e.to_string())?;
+        }
     }
     Ok(())
 }
@@ -258,7 +268,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             send_to_tts,
             stop_tts,
-            move_reader_window,
+            ensure_reader_visible,
             hide_reader_window,
             get_audio_devices,
             set_audio_device,
@@ -294,6 +304,34 @@ pub fn run() {
                 eprintln!("[Kokoro] Failed to register shortcut: {e}");
                 e
             }).ok();
+
+            // ── Background Clipboard Poller ──────────────────────────────────────────
+            // Monitors for any global clipboard change without intercepting shortcuts.
+            // Helps provide immediate "subtle" feedback when user copies text anywhere.
+            use tauri_plugin_clipboard_manager::ClipboardExt;
+            let handle_for_polling = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                // Initialize with current clipboard content to avoid flash on startup
+                let mut last_clipboard = handle_for_polling.clipboard().read_text().unwrap_or_default();
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    if let Ok(current) = handle_for_polling.clipboard().read_text() {
+                        if !current.is_empty() && current != last_clipboard {
+                            // Only emit if the reader widget is actually open
+                            let is_visible = if let Some(win) = handle_for_polling.get_webview_window("reader") {
+                                win.is_visible().unwrap_or(false)
+                            } else {
+                                false
+                            };
+
+                            if is_visible {
+                                let _ = handle_for_polling.emit("global-clipboard-change", ());
+                            }
+                            last_clipboard = current;
+                        }
+                    }
+                }
+            });
 
             Ok(())
         });

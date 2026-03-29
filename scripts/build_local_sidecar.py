@@ -16,7 +16,6 @@ def run():
         # Prefer python3.10 if available on macOS
         python_exec = sys.executable
         if os.name != 'nt':
-            import shutil
             p310 = shutil.which("python3.10")
             if p310:
                 python_exec = p310

@@ -41,6 +41,12 @@ const CloseIcon = () => (
   </svg>
 );
 
+const CopyIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 ml-1.5 inline-block">
+    <path d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z" />
+  </svg>
+);
+
 type Status = "Idle" | "Generating" | "Speaking" | "TTS Error";
 
 export default function FloatingWidget() {
@@ -48,6 +54,9 @@ export default function FloatingWidget() {
   const [speedIndex, setSpeedIndex] = useState(DEFAULT_SPEED_INDEX);
   const [status, setStatus] = useState<Status>("Idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [flashKey, setFlashKey] = useState(0); // full widget flash (on hotkey)
+  const [subtleFlashKey, setSubtleFlashKey] = useState(0); // tiny dot pulse (on global copy)
+  const hasEnteredRef = useRef(false);
   const storeRef = useRef<Awaited<ReturnType<typeof load>> | null>(null);
 
   const speed = SPEED_NOTCHES[speedIndex];
@@ -130,7 +139,12 @@ export default function FloatingWidget() {
         if (clipboardText && clipboardText.trim()) {
           const cleaned = cleanTextForTTS(clipboardText);
           lastAnalyzedText.current = cleaned;
-          await invoke("move_reader_window", { x: 100, y: 100 });
+
+          // Fixes #11: flash the widget to confirm clipboard text received
+          setFlashKey((k) => k + 1);
+          
+          // Smart Positioning: only move to cursor if not already visible
+          await invoke("ensure_reader_visible");
           await runTTS(cleaned);
         }
       } catch (err) {
@@ -140,6 +154,14 @@ export default function FloatingWidget() {
 
     return () => { unlisten.then(fn => fn()); };
   }, [speed]);
+
+  // ── Listen for Global Clipboard Changes ──
+  useEffect(() => {
+    const unlisten = listen("global-clipboard-change", () => {
+      setSubtleFlashKey((k) => k + 1);
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
 
   // ── Speed cycling ──
   const cycleSpeed = useCallback((direction: 1 | -1) => {
@@ -190,11 +212,28 @@ export default function FloatingWidget() {
     status === 'Generating' ? 'text-yellow-400' : 
     status === 'TTS Error' ? 'text-red-400' : 
     'text-white/20';
+  
+  // Only play the entrance pop once
+  useEffect(() => {
+    hasEnteredRef.current = true;
+  }, []);
 
   return (
     <div className="window-wrapper" data-tauri-drag-region>
-      <div 
-        className="content-container rounded-full flex items-center gap-1.5 px-2 py-1.5 animate-pop cursor-move"
+      {/* "Copied" Toast (Issue #11) */}
+      {subtleFlashKey > 0 && (
+        <div 
+          key={subtleFlashKey}
+          className="copied-toast animate-toast-in-out absolute pointer-events-none flex items-center"
+        >
+          clipboard copied
+          <CopyIcon />
+        </div>
+      )}
+
+      <div
+        key={flashKey}
+        className={`content-container rounded-full flex items-center gap-1.5 px-2 py-1.5 cursor-move relative transition-smooth ${flashKey > 0 ? 'animate-juicy-flash' : (!hasEnteredRef.current ? 'animate-pop' : '')}`}
         data-tauri-drag-region
       >
         {/* Play / Pause */}
@@ -203,7 +242,7 @@ export default function FloatingWidget() {
           onMouseDown={(e) => e.stopPropagation()}
           title={isPlaying ? "Pause" : "Read Aloud"}
           className="
-            w-10 h-10 rounded-full flex items-center justify-center
+            w-9 h-9 rounded-full flex items-center justify-center shrink-0
             bg-[#8AB4F8] hover:bg-[#AECBFA]
             active:scale-95 transition-smooth
             text-[#202124] shadow-md cursor-default
@@ -218,7 +257,7 @@ export default function FloatingWidget() {
           onMouseDown={(e) => e.stopPropagation()}
           title="Stop & Reset"
           className="
-            w-8 h-8 rounded-full flex items-center justify-center
+            w-7 h-7 rounded-full flex items-center justify-center shrink-0
             bg-white/5 hover:bg-white/10
             active:scale-95 transition-smooth
             cursor-default
@@ -245,7 +284,7 @@ export default function FloatingWidget() {
           onMouseDown={(e) => e.stopPropagation()}
           title={`Speed: ${speed}x (Scroll or click)`}
           className="
-            min-w-[42px] h-10 px-2 rounded-full flex items-center justify-center
+            w-9 h-9 rounded-full flex items-center justify-center shrink-0
             bg-white/5 hover:bg-white/10
             active:scale-95 transition-smooth
             text-[11px] font-bold text-white/90
@@ -261,7 +300,7 @@ export default function FloatingWidget() {
           onMouseDown={(e) => e.stopPropagation()}
           title="Close"
           className="
-            w-8 h-8 rounded-full flex items-center justify-center
+            w-7 h-7 rounded-full flex items-center justify-center shrink-0
             bg-white/5 hover:bg-red-500/20
             active:scale-95 transition-smooth
             text-white/30 hover:text-red-400 cursor-default
