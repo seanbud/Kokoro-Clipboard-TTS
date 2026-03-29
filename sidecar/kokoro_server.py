@@ -188,58 +188,87 @@ def tts():
         """ Thread that consumes from the queue and plays audio. """
         print("[STATUS] START")
         current_chunk = None
+        
         try:
-            while not stop_event.is_set():
-                # If we don't have a chunk (or finished the last one), get the next one
-                if current_chunk is None:
-                    try:
-                        current_chunk = audio_queue.get(timeout=1.0)
-                    except queue.Empty:
-                        if stop_event.is_set(): break
-                        continue
+            # Open a persistent stream for the entire session
+            # This fixes #9 by avoiding the startup/shutdown latency of sd.play()
+            with sd.OutputStream(samplerate=24000, channels=1, dtype='float32') as stream:
+                stream.start()
                 
-                i, audio = current_chunk
-                if i is None: # End of stream
-                    break
-                
-                # Wait while paused
-                if pause_event.is_set():
-                    import time
-                    time.sleep(0.1)
-                    continue
-
-                # Prepare audio
-                if hasattr(audio, "cpu"):
-                    played_audio = (audio * volume).cpu().numpy().astype(np.float32)
-                else:
-                    played_audio = (np.asarray(audio) * volume).astype(np.float32)
-                
-                max_val = float(np.max(np.abs(played_audio)))
-                print(f"[Sidecar] Chunk {i} | Max: {max_val:.4f} | RMS: {float(np.sqrt(np.mean(played_audio**2))):.4f}")
-                
-                try:
-                    sd.play(played_audio, samplerate=24000)
-                    # Loop while playing to handle immediate pause/stop
-                    import time
-                    while sd.get_stream().active and not stop_event.is_set() and not pause_event.is_set():
-                        time.sleep(0.05)
+                while not stop_event.is_set():
+                    # If we don't have a chunk (or finished the last one), get the next one
+                    if current_chunk is None:
+                        try:
+                            current_chunk = audio_queue.get(timeout=1.0)
+                        except queue.Empty:
+                            if stop_event.is_set(): break
+                            continue
                     
-                    if stop_event.is_set():
-                        sd.stop()
+                    i, audio = current_chunk
+                    if i is None: # End of stream
                         break
                     
+                    # Wait while paused
                     if pause_event.is_set():
-                        sd.stop()
-                        # Do NOT clear current_chunk; it will replay on resume
-                        print(f"[Sidecar] Paused on chunk {i}. Ready to replay.")
+                        stream.stop() # Suspends hardware without closing
+                        import time
+                        time.sleep(0.1)
                         continue
+                    
+                    if not stream.active:
+                        stream.start()
 
-                    # Finished chunk normally
-                    current_chunk = None
-                    audio_queue.task_done()
-                except Exception as playback_err:
-                    print(f"[STATUS] ERROR: {playback_err}")
-                    current_chunk = None # Don't get stuck on error
+                    # Prepare audio
+                    if hasattr(audio, "cpu"):
+                        played_audio = (audio * volume).cpu().numpy().astype(np.float32)
+                    else:
+                        played_audio = (np.asarray(audio) * volume).astype(np.float32)
+
+                    # Ensure audio is 2D (N,1) for sounddevice
+                    if len(played_audio.shape) == 1:
+                        played_audio = played_audio.reshape(-1, 1)
+
+                    # Issue #9: For the VERY first chunk, prepend 250ms of silence 
+                    # to ensure the initial driver ramp-up doesn't clip.
+                    if i == 0:
+                        initial_silence = np.zeros((6000, 1), dtype=np.float32) # 250ms
+                        played_audio = np.concatenate([initial_silence, played_audio], axis=0)
+                    
+                    # Add a natural pause between sentences (Issue #9 follow-up)
+                    # Tightened for better flow at high speeds.
+                    inter_chunk_silence = np.zeros((4800, 1), dtype=np.float32) # 200ms
+                    played_audio = np.concatenate([played_audio, inter_chunk_silence], axis=0)
+                    
+                    max_val = float(np.max(np.abs(played_audio)))
+                    print(f"[Sidecar] Chunk {i} | Max: {max_val:.4f} | RMS: {float(np.sqrt(np.mean(played_audio**2))):.4f}")
+                    
+                    try:
+                        # Feed the stream in small buffers (50ms) so we can interrupt INSTANTLY
+                        # if the user hits Pause or Stop mid-sentence.
+                        buffer_size = 1200 # 50ms at 24000Hz
+                        interrupted = False
+                        
+                        for start_idx in range(0, len(played_audio), buffer_size):
+                            if stop_event.is_set() or pause_event.is_set():
+                                interrupted = True
+                                break
+                            
+                            end_idx = min(start_idx + buffer_size, len(played_audio))
+                            stream.write(played_audio[start_idx:end_idx])
+                        
+                        if interrupted:
+                            if pause_event.is_set():
+                                stream.stop()
+                                # Do NOT clear current_chunk; it will replay on resume
+                                print(f"[Sidecar] Paused mid-chunk {i}. Ready to replay.")
+                            continue
+
+                        # Finished chunk normally
+                        current_chunk = None
+                        audio_queue.task_done()
+                    except Exception as playback_err:
+                        print(f"[STATUS] ERROR: {playback_err}")
+                        current_chunk = None # Don't get stuck on error
         except Exception as e:
             print(f"[STATUS] ERROR: {e}")
             
