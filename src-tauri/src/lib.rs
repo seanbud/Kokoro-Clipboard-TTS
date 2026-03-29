@@ -48,6 +48,26 @@ async fn send_to_tts(
 }
 
 #[tauri::command]
+async fn pause_tts() -> Result<(), String> {
+    let client = reqwest::Client::new();
+    let _ = client.post("http://127.0.0.1:8790/pause")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn resume_tts() -> Result<(), String> {
+    let client = reqwest::Client::new();
+    let _ = client.post("http://127.0.0.1:8790/resume")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 async fn stop_tts() -> Result<String, String> {
     let client = reqwest::Client::new();
     client
@@ -267,6 +287,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             send_to_tts,
+            pause_tts,
+            resume_tts,
             stop_tts,
             ensure_reader_visible,
             hide_reader_window,

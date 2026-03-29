@@ -47,7 +47,7 @@ const CopyIcon = () => (
   </svg>
 );
 
-type Status = "Idle" | "Generating" | "Speaking" | "TTS Error";
+type Status = "Idle" | "Generating" | "Speaking" | "Paused" | "TTS Error";
 
 export default function FloatingWidget() {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -180,14 +180,18 @@ export default function FloatingWidget() {
     [cycleSpeed]
   );
 
-  // ── Play / Pause ──
+  // ── Play / Pause / Resume ──
   const handlePlayPause = useCallback(async () => {
-    if (isPlaying && status === "Speaking") {
-      // If actually speaking, pause/stop it
-      await invoke("stop_tts").catch((err) => error(String(err)));
-      setIsPlaying(false);
-      setStatus("Idle");
-    } else {
+    if (status === "Speaking") {
+      // If speaking, pause it (Issue #5)
+      await invoke("pause_tts").catch((err) => error(String(err)));
+      setStatus("Paused");
+    } else if (status === "Paused") {
+      // If paused, resume it
+      await invoke("resume_tts").catch((err) => error(String(err)));
+      setStatus("Speaking");
+    } else if (status === "Idle" || status === "TTS Error") {
+      // If idle, start a fresh run
       if (lastAnalyzedText.current) {
         await runTTS(lastAnalyzedText.current);
       }
@@ -210,6 +214,7 @@ export default function FloatingWidget() {
   const statusColor = 
     status === 'Speaking' ? 'text-[#8AB4F8]' : 
     status === 'Generating' ? 'text-yellow-400' : 
+    status === 'Paused' ? 'text-[#8AB4F8]/60' : 
     status === 'TTS Error' ? 'text-red-400' : 
     'text-white/20';
   
@@ -240,7 +245,7 @@ export default function FloatingWidget() {
         <button
           onClick={handlePlayPause}
           onMouseDown={(e) => e.stopPropagation()}
-          title={isPlaying ? "Pause" : "Read Aloud"}
+          title={status === "Speaking" ? "Pause" : "Read Aloud"}
           className="
             w-9 h-9 rounded-full flex items-center justify-center shrink-0
             bg-[#8AB4F8] hover:bg-[#AECBFA]
@@ -248,7 +253,7 @@ export default function FloatingWidget() {
             text-[#202124] shadow-md cursor-default
           "
         >
-          {isPlaying ? <PauseIcon /> : <PlayIcon />}
+          {status === "Speaking" ? <PauseIcon /> : <PlayIcon />}
         </button>
 
         {/* Stop Button */}
