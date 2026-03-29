@@ -152,14 +152,14 @@
   }
 
   .animate-toast-in-out {
-    animation: toast-glow 1.2s cubic-bezier(0.2, 0, 0, 1) forwards;
+    animation: toast-glow 0.75s cubic-bezier(0.2, 0, 0, 1) forwards;
   }
 
   @keyframes toast-glow {
-    0%   { opacity: 0; transform: translateY(10px); }
-    15%  { opacity: 1; transform: translateY(-20px); }
-    85%  { opacity: 1; transform: translateY(-40px); }
-    100% { opacity: 0; transform: translateY(-55px); }
+    0%   { opacity: 0; transform: translateY(10px) scale(0.9); }
+    15%  { opacity: 1; transform: translateY(-35px) scale(1); }
+    85%  { opacity: 1; transform: translateY(-37px) scale(1); }
+    100% { opacity: 0; transform: translateY(-50px) scale(0.9); }
   }
 
   /* ── Juicy Activation Flash (Issue #11) ───────────────────────────────────
@@ -177,11 +177,11 @@
     15% {
       opacity: 1;
       transform: scale(1.03) translateY(0);
-      box-shadow: 0 0 24px 6px rgba(138, 180, 248, 0.4);
+      box-shadow: 0 0 16px 4px rgba(138, 180, 248, 0.4);
     }
     30% {
       transform: scale(1);
-      box-shadow: 0 0 32px 8px rgba(138, 180, 248, 0.6);
+      box-shadow: 0 0 24px 6px rgba(138, 180, 248, 0.6);
     }
     100% {
       opacity: 1;
