@@ -135,4 +135,82 @@
     0% { opacity: 0; transform: translateY(8px); filter: blur(4px); }
     100% { opacity: 1; transform: translateY(0); filter: blur(0); }
   }
+
+  /* ── Copied Toast Indicator (Issue #11) ───────────────────────────────────
+     Fixes #11: a small capsule that slides up from the widget to confirm
+     global clipboard detection.                                             */
+  .copied-toast {
+    background: var(--primary);
+    color: #000;
+    font-size: 10px;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    box-shadow: 0 4px 12px rgba(138, 180, 248, 0.4);
+    pointer-events: none;
+    z-index: 50;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .animate-toast-in-out {
+    animation: toast-glow 1.8s cubic-bezier(0.2, 0, 0, 1) forwards;
+  }
+
+  @keyframes toast-glow {
+    0%   { opacity: 0; transform: translateY(10px) scale(0.9); }
+    15%  { opacity: 1; transform: translateY(-38px) scale(1); }
+    85%  { opacity: 1; transform: translateY(-38px) scale(1); }
+    100% { opacity: 0; transform: translateY(-44px) scale(0.9); }
+  }
+
+  /* ── Juicy Activation Flash (Issue #11) ───────────────────────────────────
+     Combines the scale-pop with the glowing ring.                         */
+  .animate-juicy-flash {
+    animation: juicy-flash 0.6s cubic-bezier(0.2, 0, 0, 1) forwards;
+  }
+
+  @keyframes juicy-flash {
+    0% {
+      opacity: 0;
+      transform: scale(0.95) translateY(4px);
+      box-shadow: 0 0 0 0 rgba(138, 180, 248, 0);
+    }
+    15% {
+      opacity: 1;
+      transform: scale(1.03) translateY(0);
+      box-shadow: 0 0 24px 6px rgba(138, 180, 248, 0.4);
+    }
+    30% {
+      transform: scale(1);
+      box-shadow: 0 0 32px 8px rgba(138, 180, 248, 0.6);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+      box-shadow: 0 0 0 0 rgba(138, 180, 248, 0);
+    }
+  }
+
+  /* ── Clipboard copy flash ─────────────────────────────────────────────────
+     Fixes #11: momentary glow + scale bump when new clipboard text is
+     received, giving the user instant visual confirmation.               */
+  .clipboard-flash {
+    animation: clipboard-glow 0.6s cubic-bezier(0.2, 0, 0, 1) forwards;
+  }
+
+  @keyframes clipboard-glow {
+    0%   {
+      box-shadow: 0 0 0 0 rgba(138, 180, 248, 0.6),
+                  0 8px 20px rgba(0, 0, 0, 0.5);
+    }
+    30%  {
+      box-shadow: 0 0 24px 6px rgba(138, 180, 248, 0.5),
+                  0 8px 20px rgba(0, 0, 0, 0.5);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(138, 180, 248, 0),
+                  0 8px 20px rgba(0, 0, 0, 0.5);
+    }
+  }
 }

@@ -295,6 +295,26 @@ pub fn run() {
                 e
             }).ok();
 
+            // ── Background Clipboard Poller ──────────────────────────────────────────
+            // Monitors for any global clipboard change without intercepting shortcuts.
+            // Helps provide immediate "subtle" feedback when user copies text anywhere.
+            use tauri_plugin_clipboard_manager::ClipboardExt;
+            let handle_for_polling = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                // Initialize with current clipboard content to avoid flash on startup
+                let mut last_clipboard = handle_for_polling.clipboard().read_text().unwrap_or_default();
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    if let Ok(current) = handle_for_polling.clipboard().read_text() {
+                        if !current.is_empty() && current != last_clipboard {
+                            // Any change after initialization emits the global event
+                            let _ = handle_for_polling.emit("global-clipboard-change", ());
+                            last_clipboard = current;
+                        }
+                    }
+                }
+            });
+
             Ok(())
         });
 

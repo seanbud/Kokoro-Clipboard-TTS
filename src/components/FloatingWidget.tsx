@@ -48,6 +48,8 @@ export default function FloatingWidget() {
   const [speedIndex, setSpeedIndex] = useState(DEFAULT_SPEED_INDEX);
   const [status, setStatus] = useState<Status>("Idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [flashKey, setFlashKey] = useState(0); // full widget flash (on hotkey)
+  const [subtleFlashKey, setSubtleFlashKey] = useState(0); // tiny dot pulse (on global copy)
   const storeRef = useRef<Awaited<ReturnType<typeof load>> | null>(null);
 
   const speed = SPEED_NOTCHES[speedIndex];
@@ -130,6 +132,10 @@ export default function FloatingWidget() {
         if (clipboardText && clipboardText.trim()) {
           const cleaned = cleanTextForTTS(clipboardText);
           lastAnalyzedText.current = cleaned;
+
+          // Fixes #11: flash the widget to confirm clipboard text received
+          setFlashKey((k) => k + 1);
+
           await invoke("move_reader_window", { x: 100, y: 100 });
           await runTTS(cleaned);
         }
@@ -140,6 +146,14 @@ export default function FloatingWidget() {
 
     return () => { unlisten.then(fn => fn()); };
   }, [speed]);
+
+  // ── Listen for Global Clipboard Changes ──
+  useEffect(() => {
+    const unlisten = listen("global-clipboard-change", () => {
+      setSubtleFlashKey((k) => k + 1);
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
 
   // ── Speed cycling ──
   const cycleSpeed = useCallback((direction: 1 | -1) => {
@@ -193,8 +207,19 @@ export default function FloatingWidget() {
 
   return (
     <div className="window-wrapper" data-tauri-drag-region>
-      <div 
-        className="content-container rounded-full flex items-center gap-1.5 px-2 py-1.5 animate-pop cursor-move"
+      {/* "Copied" Toast (Issue #11) */}
+      {subtleFlashKey > 0 && (
+        <div 
+          key={subtleFlashKey}
+          className="copied-toast animate-toast-in-out absolute pointer-events-none"
+        >
+          ✓ Copied
+        </div>
+      )}
+
+      <div
+        key={flashKey}
+        className={`content-container rounded-full flex items-center gap-1.5 px-2 py-1.5 cursor-move relative transition-smooth ${flashKey > 0 ? 'animate-juicy-flash' : 'animate-pop'}`}
         data-tauri-drag-region
       >
         {/* Play / Pause */}
