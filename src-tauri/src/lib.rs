@@ -225,7 +225,25 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // ── Single Instance Guard (must be first plugin) ──
+    // If the app is already running, focus the existing instance and exit.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(
+            |app, _args, _cwd| {
+                // When a second instance is launched, just show the settings window
+                // of the already-running instance so the user knows it's alive.
+                if let Some(win) = app.get_webview_window("settings") {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                }
+            },
+        ));
+    }
+
+    let builder = builder
         .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
