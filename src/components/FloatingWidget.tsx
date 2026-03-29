@@ -41,6 +41,12 @@ const CloseIcon = () => (
   </svg>
 );
 
+const CopyIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 ml-1.5 inline-block">
+    <path d="M16 1H4C2.9 1 2 1.9 2 3V17H4V3H16V1ZM19 5H8C6.9 5 6 5.9 6 7V21C6 22.1 6.9 23 8 23H19C20.1 23 21 22.1 21 21V7C21 5.9 20.1 5 19 5ZM19 21H8V7H19V21Z" />
+  </svg>
+);
+
 type Status = "Idle" | "Generating" | "Speaking" | "TTS Error";
 
 export default function FloatingWidget() {
@@ -135,8 +141,9 @@ export default function FloatingWidget() {
 
           // Fixes #11: flash the widget to confirm clipboard text received
           setFlashKey((k) => k + 1);
-
-          await invoke("move_reader_window", { x: 100, y: 100 });
+          
+          // Smart Positioning: only move to cursor if not already visible
+          await invoke("ensure_reader_visible");
           await runTTS(cleaned);
         }
       } catch (err) {
@@ -211,9 +218,10 @@ export default function FloatingWidget() {
       {subtleFlashKey > 0 && (
         <div 
           key={subtleFlashKey}
-          className="copied-toast animate-toast-in-out absolute pointer-events-none"
+          className="copied-toast animate-toast-in-out absolute pointer-events-none flex items-center"
         >
-          ✓ Copied
+          clipboard copied
+          <CopyIcon />
         </div>
       )}
 

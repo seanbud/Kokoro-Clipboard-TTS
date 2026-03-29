@@ -137,31 +137,29 @@
   }
 
   /* ── Copied Toast Indicator (Issue #11) ───────────────────────────────────
-     Fixes #11: a small capsule that slides up from the widget to confirm
-     global clipboard detection.                                             */
+     Fixes #11: a minimal text-only confirmation that slides up 
+     from the widget.                                                        */
   .copied-toast {
-    background: var(--primary);
-    color: #000;
-    font-size: 10px;
+    color: var(--primary);
+    font-size: 11px;
     font-weight: 800;
-    padding: 4px 10px;
-    border-radius: 9999px;
-    box-shadow: 0 4px 12px rgba(138, 180, 248, 0.4);
     pointer-events: none;
     z-index: 50;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    text-transform: none; /* No capitals as requested */
+    letter-spacing: 0.02em;
+    /* Black blurred dropshadow glow for legibility */
+    text-shadow: 0 0 8px rgba(0, 0, 0, 0.8), 0 0 16px rgba(0, 0, 0, 0.4);
   }
 
   .animate-toast-in-out {
-    animation: toast-glow 1.8s cubic-bezier(0.2, 0, 0, 1) forwards;
+    animation: toast-glow 1.2s cubic-bezier(0.2, 0, 0, 1) forwards;
   }
 
   @keyframes toast-glow {
-    0%   { opacity: 0; transform: translateY(10px) scale(0.9); }
-    15%  { opacity: 1; transform: translateY(-38px) scale(1); }
-    85%  { opacity: 1; transform: translateY(-38px) scale(1); }
-    100% { opacity: 0; transform: translateY(-44px) scale(0.9); }
+    0%   { opacity: 0; transform: translateY(10px); }
+    15%  { opacity: 1; transform: translateY(-20px); }
+    85%  { opacity: 1; transform: translateY(-40px); }
+    100% { opacity: 0; transform: translateY(-55px); }
   }
 
   /* ── Juicy Activation Flash (Issue #11) ───────────────────────────────────
