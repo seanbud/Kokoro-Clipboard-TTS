@@ -6,9 +6,15 @@ import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { error } from "@tauri-apps/plugin-log";
 import { cleanTextForTTS } from "../utils/textCleaner";
 
-// ─── Speed Notches (Expanded as requested) ──────────────────────────────────
-const SPEED_NOTCHES = [0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3] as const;
-const DEFAULT_SPEED_INDEX = 4; // 1.0x
+// ─── Speed Notches ───────────────────────────────────────────────────────────
+// Range: 0.5x – 2.0x in 0.1 increments (16 notches).
+// Fixes #12: extends maximum speed well beyond the previous 1.3x cap.
+const SPEED_NOTCHES = [
+  0.5, 0.6, 0.7, 0.8, 0.9,
+  1.0,
+  1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0,
+] as const;
+const DEFAULT_SPEED_INDEX = 5; // 1.0x
 
 // ─── Icons ──────────────────────────────────────────────────────────────────
 const PlayIcon = () => (
