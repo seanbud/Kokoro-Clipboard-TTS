@@ -88,6 +88,7 @@ except Exception:
 
 app = Flask(__name__)
 stop_event = threading.Event()
+pause_event = threading.Event() # Issue #5: Support Pause/Resume
 pipeline = None
 request_counter = 0
 
@@ -133,6 +134,7 @@ def cleanup_zombies():
 def tts():
     # Stop any previous playback immediately
     stop_event.set()
+    pause_event.clear() # Reset pause on new request
     sd.stop()
     
     p = get_pipeline()
@@ -185,36 +187,59 @@ def tts():
     def playback_worker():
         """ Thread that consumes from the queue and plays audio. """
         print("[STATUS] START")
+        current_chunk = None
         try:
             while not stop_event.is_set():
-                try:
-                    i, audio = audio_queue.get(timeout=1.0)
-                except queue.Empty:
-                    if stop_event.is_set(): break
-                    continue
+                # If we don't have a chunk (or finished the last one), get the next one
+                if current_chunk is None:
+                    try:
+                        current_chunk = audio_queue.get(timeout=1.0)
+                    except queue.Empty:
+                        if stop_event.is_set(): break
+                        continue
                 
+                i, audio = current_chunk
                 if i is None: # End of stream
                     break
                 
-                # Convert to NumPy/float32 and apply volume.
-                # kokoro may return a torch tensor (has .cpu()) or a numpy
-                # array depending on version — handle both.
+                # Wait while paused
+                if pause_event.is_set():
+                    import time
+                    time.sleep(0.1)
+                    continue
+
+                # Prepare audio
                 if hasattr(audio, "cpu"):
                     played_audio = (audio * volume).cpu().numpy().astype(np.float32)
                 else:
                     played_audio = (np.asarray(audio) * volume).astype(np.float32)
                 
-                # Print status for frontend parsing
                 max_val = float(np.max(np.abs(played_audio)))
                 print(f"[Sidecar] Chunk {i} | Max: {max_val:.4f} | RMS: {float(np.sqrt(np.mean(played_audio**2))):.4f}")
                 
                 try:
                     sd.play(played_audio, samplerate=24000)
-                    sd.wait()
+                    # Loop while playing to handle immediate pause/stop
+                    import time
+                    while sd.get_stream().active and not stop_event.is_set() and not pause_event.is_set():
+                        time.sleep(0.05)
+                    
+                    if stop_event.is_set():
+                        sd.stop()
+                        break
+                    
+                    if pause_event.is_set():
+                        sd.stop()
+                        # Do NOT clear current_chunk; it will replay on resume
+                        print(f"[Sidecar] Paused on chunk {i}. Ready to replay.")
+                        continue
+
+                    # Finished chunk normally
+                    current_chunk = None
+                    audio_queue.task_done()
                 except Exception as playback_err:
                     print(f"[STATUS] ERROR: {playback_err}")
-                
-                audio_queue.task_done()
+                    current_chunk = None # Don't get stuck on error
         except Exception as e:
             print(f"[STATUS] ERROR: {e}")
             
@@ -230,8 +255,22 @@ def tts():
 def stop():
     print("[Sidecar] Stopping playback")
     stop_event.set()
+    pause_event.clear()
     sd.stop()
     return jsonify({"status": "stopped"})
+
+@app.route("/pause", methods=["POST"])
+def pause():
+    print("[Sidecar] Pausing playback")
+    pause_event.set()
+    sd.stop()
+    return jsonify({"status": "paused"})
+
+@app.route("/resume", methods=["POST"])
+def resume():
+    print("[Sidecar] Resuming playback")
+    pause_event.clear()
+    return jsonify({"status": "resumed"})
 
 @app.route("/devices", methods=["GET"])
 def get_devices():
