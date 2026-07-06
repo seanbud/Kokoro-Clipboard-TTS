@@ -35,7 +35,16 @@ def run():
     subprocess.check_call([venv_python, "-m", "pip", "install", "-U", "pip"])
     subprocess.check_call([venv_python, "-m", "pip", "install", "-r", "requirements.txt"])
     print("Installing spaCy en_core_web_sm model...")
-    subprocess.check_call([venv_python, "-m", "spacy", "download", "en_core_web_sm"])
+    # spaCy may delegate installation to uv. When the venv's Python is invoked
+    # by absolute path (rather than through an activated shell), uv cannot infer
+    # the active environment on macOS unless VIRTUAL_ENV and PATH are explicit.
+    venv_env = os.environ.copy()
+    venv_env["VIRTUAL_ENV"] = venv_dir
+    venv_env["PATH"] = os.path.dirname(venv_python) + os.pathsep + venv_env.get("PATH", "")
+    subprocess.check_call(
+        [venv_python, "-m", "spacy", "download", "en_core_web_sm"],
+        env=venv_env,
+    )
 
     # 4. Build with PyInstaller
     print("Building sidecar executable...")
