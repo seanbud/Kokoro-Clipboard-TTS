@@ -176,6 +176,8 @@ async fn hide_reader_window(app: AppHandle) -> Result<(), String> {
 
 
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
+    let read_clipboard_item =
+        MenuItem::with_id(app, "read_clipboard", "Read Clipboard", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let updates_item =
         MenuItem::with_id(app, "check_updates", "Check for Updates", true, None::<&str>)?;
@@ -184,15 +186,33 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 
     let menu = Menu::with_items(
         app,
-        &[&settings_item, &updates_item, &tutorial_item, &quit_item],
+        &[
+            &read_clipboard_item,
+            &settings_item,
+            &updates_item,
+            &tutorial_item,
+            &quit_item,
+        ],
     )?;
 
-    let tray = tauri::tray::TrayIconBuilder::with_id("main-tray")
+    let tray_builder = tauri::tray::TrayIconBuilder::with_id("main-tray")
         .icon(app.default_window_icon().unwrap().clone())
         .menu(&menu)
-        .show_menu_on_left_click(false)
-        .tooltip("Kokoro Clipboard TTS")
+        .tooltip("Kokoro Clipboard TTS");
+
+    #[cfg(target_os = "macos")]
+    let tray_builder = tray_builder
+        .icon_as_template(true)
+        .show_menu_on_left_click(true);
+
+    #[cfg(not(target_os = "macos"))]
+    let tray_builder = tray_builder.show_menu_on_left_click(false);
+
+    let tray = tray_builder
         .on_menu_event(move |app, event| match event.id.as_ref() {
+            "read_clipboard" => {
+                let _ = app.emit("shortcut-triggered", ());
+            }
             "settings" => {
                 if let Some(win) = app.get_webview_window("settings") {
                     let _ = win.show();
@@ -311,6 +331,9 @@ pub fn run() {
 
             // ── Register default global shortcut ──
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
+            #[cfg(target_os = "macos")]
+            let shortcut = "control+option+r";
+            #[cfg(not(target_os = "macos"))]
             let shortcut = "super+shift+q";
             let handle_for_shortcut = handle.clone();
             app.handle().plugin(
