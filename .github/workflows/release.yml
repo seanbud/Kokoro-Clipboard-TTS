@@ -18,10 +18,13 @@ jobs:
         include:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-          - platform: macos-13
-            target: universal-apple-darwin
+          - platform: macos-15
+            target: aarch64-apple-darwin
+          - platform: macos-15-intel
+            target: x86_64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -40,26 +43,31 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target == 'universal-apple-darwin' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ startsWith(matrix.platform, 'macos-') && matrix.target || '' }}
 
       - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
           python -m spacy download en_core_web_sm
 
-      - name: Download Kokoro Model Weights
+      - name: Download Kokoro model and voices
         shell: bash
         run: |
-          mkdir -p sidecar/model
-          # Download official Kokoro-82M model weights/voices
-          curl -L -o sidecar/model/kokoro-v0.19.onnx https://github.com/hexgrad/kokoro/raw/main/kokoro-v0.19.onnx
-          curl -L -o sidecar/model/voices.json https://github.com/hexgrad/kokoro/raw/main/voices.json
+          python - <<'PY'
+          from huggingface_hub import snapshot_download
+
+          snapshot_download(
+              repo_id="hexgrad/Kokoro-82M",
+              local_dir="sidecar/model",
+              allow_patterns=["config.json", "kokoro-v1_0.pth", "voices/*.pt"],
+          )
+          PY
 
       - name: Build Sidecar with PyInstaller
         shell: bash
         run: |
           # Use platform-specific separator for --add-data
-          if [ "${{ matrix.platform }}" == "windows-latest" ]; then
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
             SEP=";"
           else
             SEP=":"
@@ -82,11 +90,10 @@ jobs:
             --collect-all en_core_web_sm \
             sidecar/kokoro_server.py
           mkdir -p src-tauri/binaries
-          if [ "${{ matrix.platform }}" == "windows-latest" ]; then
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
             mv dist/kokoro.exe src-tauri/binaries/kokoro-x86_64-pc-windows-msvc.exe
           else
-            # Tauri universal builds expect the sidecar named with the universal triple
-            mv dist/kokoro src-tauri/binaries/kokoro-universal-apple-darwin
+            mv dist/kokoro "src-tauri/binaries/kokoro-${{ matrix.target }}"
           fi
 
       - name: Install frontend dependencies
@@ -100,33 +107,16 @@ jobs:
         run: cargo test
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Kokoro Clipboard TTS ${{ github.ref_name }}"
           releaseBody: "See the assets below to download and install."
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.target == 'universal-apple-darwin' && '--target universal-apple-darwin' || '' }}
-
-  # Generate latest.json for auto-updater after all builds complete
-  publish-updater:
-    needs: build
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Generate latest.json
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          updaterJsonKeepUniversal: true
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: false
+          releaseAssetNamePattern: "[name]_[version]_[platform]_[arch][setup].[ext]"
+          args: ${{ startsWith(matrix.platform, 'macos-') && format('--target {0}', matrix.target) || '' }}

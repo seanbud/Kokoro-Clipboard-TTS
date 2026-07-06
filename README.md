@@ -44,7 +44,7 @@ Reads your clipboard aloud with [**Kokoro-82M**](https://github.com/hexgrad/koko
 1. Go to the [Releases](https://github.com/seanbud/Kokoro-Clipboard-TTS/releases) page.
 2. Download the installer for your platform:
    - **Windows**: `.msi` or `.exe` installer
-   - **macOS**: `.dmg` (Universal binary)
+   - **macOS**: `.dmg` for Apple Silicon (`aarch64`) or Intel (`x64`)
 3. Run the installer. **That's it!** The AI engine and model weights are bundled inside.
 
 ---

@@ -77,7 +77,7 @@ BUNDLE_DIR = get_bundle_dir()
 MODEL_DIR = os.path.join(BUNDLE_DIR, "model")
 
 try:
-    from kokoro import KPipeline
+    from kokoro import KModel, KPipeline
 except Exception:
     import traceback
     import time
@@ -95,9 +95,18 @@ request_counter = 0
 def get_pipeline():
     global pipeline
     if pipeline is None:
-        print("[Sidecar] Initializing Kokoro Pipeline (this may take a moment to download weights on first run...)")
+        print("[Sidecar] Initializing Kokoro Pipeline...")
         try:
-            pipeline = KPipeline(lang_code='a')
+            config_path = os.path.join(MODEL_DIR, "config.json")
+            model_path = os.path.join(MODEL_DIR, "kokoro-v1_0.pth")
+            if os.path.isfile(config_path) and os.path.isfile(model_path):
+                print("[Sidecar] Loading bundled model weights.")
+                repo_id = "hexgrad/Kokoro-82M"
+                model = KModel(repo_id=repo_id, config=config_path, model=model_path)
+                pipeline = KPipeline(lang_code='a', repo_id=repo_id, model=model)
+            else:
+                print("[Sidecar] Bundled weights not found; downloading from Hugging Face.")
+                pipeline = KPipeline(lang_code='a')
             print("[Sidecar] Pipeline initialized successfully.")
         except Exception as e:
             print(f"[Sidecar] CRITICAL: Failed to initialize Pipeline: {e}")
@@ -142,6 +151,8 @@ def tts():
     text = data.get("text", "")
     speed = float(data.get("speed", 1.0))
     voice = data.get("voice", "am_fenrir")
+    bundled_voice = os.path.join(MODEL_DIR, "voices", f"{voice}.pt")
+    voice_source = bundled_voice if os.path.isfile(bundled_voice) else voice
     volume = float(data.get("volume", 1.0))
     
     if not text:
@@ -167,7 +178,7 @@ def tts():
     def generator_worker():
         """ Thread that generates audio tensors as fast as possible. """
         try:
-            generator = p(text, voice=voice, speed=speed)
+            generator = p(text, voice=voice_source, speed=speed)
             for i, (gs, ps, audio) in enumerate(generator):
                 if stop_event.is_set():
                     break

@@ -50,27 +50,36 @@ def run():
     print("Building sidecar executable...")
     # We use --onefile and --name kokoro
     # The output will be in dist/kokoro.exe
+    pyinstaller_args = [
+        venv_pyinstaller,
+        "--onefile",
+        "--name", "kokoro",
+        "--collect-all", "onnxruntime",
+        "--collect-all", "kokoro",
+        "--collect-all", "misaki",
+        "--collect-all", "phonemizer",
+        "--collect-all", "language_tags",
+        "--collect-all", "espeakng_loader",
+        "--collect-all", "huggingface_hub",
+        "--collect-all", "sounddevice",
+        "--collect-all", "soundfile",
+        "--collect-all", "torch",
+        "--collect-all", "loguru",
+        "--collect-all", "transformers",
+        "--collect-all", "spacy",
+        "--collect-all", "en_core_web_sm",
+    ]
+    model_dir = os.path.join("sidecar", "model")
+    if (
+        os.path.isfile(os.path.join(model_dir, "config.json"))
+        and os.path.isfile(os.path.join(model_dir, "kokoro-v1_0.pth"))
+    ):
+        print("Bundling local Kokoro model weights and voices...")
+        pyinstaller_args.extend(["--add-data", f"{model_dir}{os.pathsep}model"])
+    pyinstaller_args.append(os.path.join("sidecar", "kokoro_server.py"))
+
     try:
-        subprocess.check_call([
-            venv_pyinstaller, 
-            "--onefile", 
-            "--name", "kokoro",
-            "--collect-all", "onnxruntime",
-            "--collect-all", "kokoro",
-            "--collect-all", "misaki",
-            "--collect-all", "phonemizer",
-            "--collect-all", "language_tags",
-            "--collect-all", "espeakng_loader",
-            "--collect-all", "huggingface_hub",
-            "--collect-all", "sounddevice",
-            "--collect-all", "soundfile",
-            "--collect-all", "torch",
-            "--collect-all", "loguru",
-            "--collect-all", "transformers",
-            "--collect-all", "spacy",
-            "--collect-all", "en_core_web_sm",
-            "sidecar/kokoro_server.py"
-        ])
+        subprocess.check_call(pyinstaller_args)
     except Exception as e:
         print(f"Error building with PyInstaller: {e}")
         return

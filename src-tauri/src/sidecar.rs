@@ -248,7 +248,9 @@ impl SidecarManager {
                 .unwrap_or_default();
             
             let mut attempts = 0;
-            let max_attempts = 100; // ~50 seconds total
+            // PyInstaller one-file bundles can take close to a minute to
+            // extract and import Torch on first launch, especially on macOS.
+            let max_attempts = 180; // ~90 seconds when connections are refused quickly
             
             while attempts < max_attempts {
                 match client.get("http://127.0.0.1:8790/health").send().await {
