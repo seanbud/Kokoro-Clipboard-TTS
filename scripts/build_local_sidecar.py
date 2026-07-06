@@ -35,33 +35,51 @@ def run():
     subprocess.check_call([venv_python, "-m", "pip", "install", "-U", "pip"])
     subprocess.check_call([venv_python, "-m", "pip", "install", "-r", "requirements.txt"])
     print("Installing spaCy en_core_web_sm model...")
-    subprocess.check_call([venv_python, "-m", "spacy", "download", "en_core_web_sm"])
+    # spaCy may delegate installation to uv. When the venv's Python is invoked
+    # by absolute path (rather than through an activated shell), uv cannot infer
+    # the active environment on macOS unless VIRTUAL_ENV and PATH are explicit.
+    venv_env = os.environ.copy()
+    venv_env["VIRTUAL_ENV"] = venv_dir
+    venv_env["PATH"] = os.path.dirname(venv_python) + os.pathsep + venv_env.get("PATH", "")
+    subprocess.check_call(
+        [venv_python, "-m", "spacy", "download", "en_core_web_sm"],
+        env=venv_env,
+    )
 
     # 4. Build with PyInstaller
     print("Building sidecar executable...")
     # We use --onefile and --name kokoro
     # The output will be in dist/kokoro.exe
+    pyinstaller_args = [
+        venv_pyinstaller,
+        "--onefile",
+        "--name", "kokoro",
+        "--collect-all", "onnxruntime",
+        "--collect-all", "kokoro",
+        "--collect-all", "misaki",
+        "--collect-all", "phonemizer",
+        "--collect-all", "language_tags",
+        "--collect-all", "espeakng_loader",
+        "--collect-all", "huggingface_hub",
+        "--collect-all", "sounddevice",
+        "--collect-all", "soundfile",
+        "--collect-all", "torch",
+        "--collect-all", "loguru",
+        "--collect-all", "transformers",
+        "--collect-all", "spacy",
+        "--collect-all", "en_core_web_sm",
+    ]
+    model_dir = os.path.join("sidecar", "model")
+    if (
+        os.path.isfile(os.path.join(model_dir, "config.json"))
+        and os.path.isfile(os.path.join(model_dir, "kokoro-v1_0.pth"))
+    ):
+        print("Bundling local Kokoro model weights and voices...")
+        pyinstaller_args.extend(["--add-data", f"{model_dir}{os.pathsep}model"])
+    pyinstaller_args.append(os.path.join("sidecar", "kokoro_server.py"))
+
     try:
-        subprocess.check_call([
-            venv_pyinstaller, 
-            "--onefile", 
-            "--name", "kokoro",
-            "--collect-all", "onnxruntime",
-            "--collect-all", "kokoro",
-            "--collect-all", "misaki",
-            "--collect-all", "phonemizer",
-            "--collect-all", "language_tags",
-            "--collect-all", "espeakng_loader",
-            "--collect-all", "huggingface_hub",
-            "--collect-all", "sounddevice",
-            "--collect-all", "soundfile",
-            "--collect-all", "torch",
-            "--collect-all", "loguru",
-            "--collect-all", "transformers",
-            "--collect-all", "spacy",
-            "--collect-all", "en_core_web_sm",
-            "sidecar/kokoro_server.py"
-        ])
+        subprocess.check_call(pyinstaller_args)
     except Exception as e:
         print(f"Error building with PyInstaller: {e}")
         return
