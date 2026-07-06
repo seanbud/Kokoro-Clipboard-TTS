@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import { register, unregister, isRegistered } from "@tauri-apps/plugin-global-shortcut";
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 
@@ -16,7 +17,7 @@ const VOICE_PRESETS = [
 
 const DEFAULT_VOICE = "am_fenrir";
 const DEFAULT_SHORTCUT_WIN = "Super+Shift+Q";
-const DEFAULT_SHORTCUT_MAC = "Command+Shift+Q";
+const DEFAULT_SHORTCUT_MAC = "Control+Option+R";
 
 function getPlatformDefault() {
   return navigator.userAgent.includes("Mac")
@@ -91,7 +92,7 @@ export default function SettingsWindow() {
       if (shortcutEnabled) {
         await register(shortcut, (event) => {
           if (event.state === "Pressed") {
-            console.log("[Kokoro] Shortcut triggered");
+            void emit("shortcut-triggered");
           }
         });
       }
@@ -110,7 +111,7 @@ export default function SettingsWindow() {
     const parts: string[] = [];
     if (e.metaKey) parts.push("Command");
     if (e.ctrlKey) parts.push("Control");
-    if (e.altKey) parts.push("Alt");
+    if (e.altKey) parts.push(navigator.userAgent.includes("Mac") ? "Option" : "Alt");
     if (e.shiftKey) parts.push("Shift");
     const key = e.key;
     if (!["Control", "Shift", "Alt", "Meta"].includes(key)) {

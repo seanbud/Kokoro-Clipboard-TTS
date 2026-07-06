@@ -19,7 +19,7 @@ export default function Tutorial() {
   };
 
   const isMac = navigator.userAgent.includes("Mac");
-  const shortcutKey = isMac ? "⌘ + Shift + Q" : "Win + Shift + Q";
+  const shortcutKey = isMac ? "Control + Option + R" : "Win + Shift + Q";
 
   return (
     <div className="window-wrapper" data-tauri-drag-region>
@@ -70,6 +70,7 @@ export default function Tutorial() {
                   <kbd className="px-2.5 py-0.5 rounded-lg bg-white/5 text-white/50 font-mono text-xs border border-white/5 ml-1">
                     {shortcutKey}
                   </kbd>
+                  {" "}or choose Read Clipboard from the tray menu.
                 </p>
               </div>
             </div>

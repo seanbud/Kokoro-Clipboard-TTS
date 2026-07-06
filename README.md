@@ -27,11 +27,11 @@ Reads your clipboard aloud with [**Kokoro-82M**](https://github.com/hexgrad/koko
 
 | Feature | Description |
 |---|---|
-| **Global Hotkey** | Select text anywhere → press `Win+Shift+Q` (or `Cmd+Shift+Q`) → hear it read aloud |
+| **Global Hotkey** | Select text anywhere → press `Win+Shift+Q` on Windows or `Control+Option+R` on macOS → hear it read aloud |
 | **Floating Reader** | A minimal, always-on-top widget appears near your cursor with Play/Pause, Stop, and Speed controls |
 | **Speed Control** | Click or scroll-wheel to cycle: 0.5× → 0.75× → 1× → 1.25× → 1.5× → 1.75× → 2× |
 | **28 Voice Presets** | Choose from Kokoro's full voice library (default: Fenrir) |
-| **System Tray** | Runs headless — lives in your tray/menu bar, never clutters your taskbar |
+| **System Tray** | Runs headless — choose **Read Clipboard** from the tray/menu-bar menu as an alternative to the hotkey |
 | **Auto-Updater** | Silently checks for updates on launch and offers one-click install |
 | **100% Local** | No cloud APIs. No data leaves your machine. Zero latency. |
 
