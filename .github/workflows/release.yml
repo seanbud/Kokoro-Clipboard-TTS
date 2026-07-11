@@ -9,7 +9,50 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  prepare-model:
+    name: Prepare offline Kokoro model
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Download Kokoro model and voices
+        env:
+          # The Windows runner stalled in hf-xet while downloading this public
+          # model. Use the standard HTTP client and keep concurrency modest.
+          HF_HUB_DISABLE_XET: "1"
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python -m pip install --disable-pip-version-check huggingface_hub
+          python - <<'PY'
+          from huggingface_hub import snapshot_download
+
+          snapshot_download(
+              repo_id="hexgrad/Kokoro-82M",
+              local_dir="sidecar/model",
+              allow_patterns=["config.json", "kokoro-v1_0.pth", "voices/*.pt"],
+              max_workers=4,
+          )
+          PY
+          test -f sidecar/model/config.json
+          test -f sidecar/model/kokoro-v1_0.pth
+          test -n "$(find sidecar/model/voices -name '*.pt' -print -quit)"
+
+      - name: Upload offline model bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: kokoro-offline-model
+          path: sidecar/model
+          retention-days: 1
+          # Model weights are already compressed; skip CPU-intensive recompression.
+          compression-level: 0
+
   build:
+    needs: prepare-model
     permissions:
       contents: write
     strategy:
@@ -45,23 +88,23 @@ jobs:
         with:
           targets: ${{ startsWith(matrix.platform, 'macos-') && matrix.target || '' }}
 
+      - name: Download offline model bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: kokoro-offline-model
+          path: sidecar/model
+
+      - name: Verify offline model bundle
+        shell: bash
+        run: |
+          test -f sidecar/model/config.json
+          test -f sidecar/model/kokoro-v1_0.pth
+          test -n "$(find sidecar/model/voices -name '*.pt' -print -quit)"
+
       - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
           python -m spacy download en_core_web_sm
-
-      - name: Download Kokoro model and voices
-        shell: bash
-        run: |
-          python - <<'PY'
-          from huggingface_hub import snapshot_download
-
-          snapshot_download(
-              repo_id="hexgrad/Kokoro-82M",
-              local_dir="sidecar/model",
-              allow_patterns=["config.json", "kokoro-v1_0.pth", "voices/*.pt"],
-          )
-          PY
 
       - name: Build Sidecar with PyInstaller
         shell: bash
