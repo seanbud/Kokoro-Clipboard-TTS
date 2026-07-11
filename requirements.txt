@@ -12,4 +12,7 @@ phonemizer-fork==3.3.2
 language_tags
 espeakng_loader
 huggingface_hub
+# PyInstaller's pkg_resources runtime hook requires the legacy provider API.
+# Setuptools 81 removed it, causing the frozen macOS sidecar to exit at startup.
+setuptools<81
 pyinstaller
