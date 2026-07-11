@@ -69,10 +69,13 @@ jobs:
           # Use platform-specific separator for --add-data
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
             SEP=";"
+            CODESIGN_ARGS=()
           else
             SEP=":"
+            CODESIGN_ARGS=(--codesign-identity - --osx-entitlements-file src-tauri/sidecar.entitlements.plist)
           fi
           pyinstaller --onefile --name kokoro \
+            "${CODESIGN_ARGS[@]}" \
             --add-data "sidecar/model${SEP}model" \
             --collect-all onnxruntime \
             --collect-all kokoro \
