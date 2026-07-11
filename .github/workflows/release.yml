@@ -99,6 +99,38 @@ jobs:
             mv dist/kokoro "src-tauri/binaries/kokoro-${{ matrix.target }}"
           fi
 
+      - name: Verify frozen sidecar startup
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            SIDECAR="src-tauri/binaries/kokoro-x86_64-pc-windows-msvc.exe"
+          else
+            SIDECAR="src-tauri/binaries/kokoro-${{ matrix.target }}"
+          fi
+
+          "$SIDECAR" --port 8794 > sidecar-startup.log 2>&1 &
+          SIDECAR_PID=$!
+          cleanup_sidecar() {
+            # PyInstaller --onefile uses a launcher and an extracted child process.
+            # Terminate the child first so neither leaks into subsequent build steps.
+            pkill -TERM -P "$SIDECAR_PID" 2>/dev/null || true
+            kill "$SIDECAR_PID" 2>/dev/null || true
+            wait "$SIDECAR_PID" 2>/dev/null || true
+          }
+          trap cleanup_sidecar EXIT
+
+          for _ in {1..60}; do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:8794/health; then
+              cleanup_sidecar
+              trap - EXIT
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat sidecar-startup.log
+          exit 1
+
       - name: Install frontend dependencies
         run: npm ci
 
