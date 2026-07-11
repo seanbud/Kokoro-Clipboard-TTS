@@ -69,6 +69,15 @@ def run():
         "--collect-all", "spacy",
         "--collect-all", "en_core_web_sm",
     ]
+    if os.name != 'nt':
+        # macOS validates code signatures when PyInstaller's onefile bootloader
+        # extracts and loads the bundled Python framework. Sign all collected
+        # binaries with the same ad-hoc identity so the bootloader and embedded
+        # framework are allowed to load together after installation.
+        pyinstaller_args.extend([
+            "--codesign-identity", "-",
+            "--osx-entitlements-file", os.path.join("src-tauri", "sidecar.entitlements.plist"),
+        ])
     model_dir = os.path.join("sidecar", "model")
     if (
         os.path.isfile(os.path.join(model_dir, "config.json"))
