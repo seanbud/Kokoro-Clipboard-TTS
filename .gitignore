@@ -31,3 +31,4 @@ build/
 src-tauri/binaries/
 sidecar/kokoro.pid
 sidecar/model/
+sidecar/native/

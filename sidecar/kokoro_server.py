@@ -3,7 +3,20 @@ import sys
 import builtins
 import threading
 import argparse
+import uuid
 from flask import Flask, request, jsonify
+
+try:
+    from .tts_protocol import encode_tts_event, normalize_synthesis_segments
+    from .audio_playback import AudioChunk, play_queued_audio
+    from .playback_session import PlaybackSessionController
+    from .sonic_speed import SonicSpeedProcessor
+except ImportError:
+    # Script/PyInstaller execution places the sidecar directory on sys.path.
+    from tts_protocol import encode_tts_event, normalize_synthesis_segments
+    from audio_playback import AudioChunk, play_queued_audio
+    from playback_session import PlaybackSessionController
+    from sonic_speed import SonicSpeedProcessor
 
 # Make stdout write-through (unbuffered) so every write is flushed to disk
 # immediately. This is critical on Windows where PyInstaller --onefile processes
@@ -87,31 +100,77 @@ except Exception:
     sys.exit(1)
 
 app = Flask(__name__)
-stop_event = threading.Event()
-pause_event = threading.Event() # Issue #5: Support Pause/Resume
 pipeline = None
+pipeline_lock = threading.Lock()
+inference_lock = threading.Lock()
 request_counter = 0
+session_controller = PlaybackSessionController()
+
+
+def emit_tts_event(event, request_id, **data):
+    """Write one machine-readable lifecycle event without clipboard content."""
+    print(encode_tts_event(event, request_id, **data))
+
+
+def validate_control_request(data):
+    """Reject delayed controls intended for a playback session that is no longer active."""
+    request_id = str(data.get("request_id") or "").strip()
+    session, error = session_controller.control_target(request_id)
+    if error == "no_active_session":
+        return None, (
+            jsonify({"error": "There is no active playback request"}),
+            409,
+        )
+    if error == "stale_session":
+        return None, (
+            jsonify({"error": "Playback request is no longer active"}),
+            409,
+        )
+    return session, None
 
 def get_pipeline():
     global pipeline
     if pipeline is None:
-        print("[Sidecar] Initializing Kokoro Pipeline...")
-        try:
-            config_path = os.path.join(MODEL_DIR, "config.json")
-            model_path = os.path.join(MODEL_DIR, "kokoro-v1_0.pth")
-            if os.path.isfile(config_path) and os.path.isfile(model_path):
-                print("[Sidecar] Loading bundled model weights.")
-                repo_id = "hexgrad/Kokoro-82M"
-                model = KModel(repo_id=repo_id, config=config_path, model=model_path)
-                pipeline = KPipeline(lang_code='a', repo_id=repo_id, model=model)
-            else:
-                print("[Sidecar] Bundled weights not found; downloading from Hugging Face.")
-                pipeline = KPipeline(lang_code='a')
-            print("[Sidecar] Pipeline initialized successfully.")
-        except Exception as e:
-            print(f"[Sidecar] CRITICAL: Failed to initialize Pipeline: {e}")
-            raise e
+        with pipeline_lock:
+            if pipeline is None:
+                print("[Sidecar] Initializing Kokoro Pipeline...")
+                try:
+                    config_path = os.path.join(MODEL_DIR, "config.json")
+                    model_path = os.path.join(MODEL_DIR, "kokoro-v1_0.pth")
+                    if os.path.isfile(config_path) and os.path.isfile(model_path):
+                        print("[Sidecar] Loading bundled model weights.")
+                        repo_id = "hexgrad/Kokoro-82M"
+                        model = KModel(repo_id=repo_id, config=config_path, model=model_path)
+                        pipeline = KPipeline(lang_code='a', repo_id=repo_id, model=model)
+                    else:
+                        print("[Sidecar] Bundled weights not found; downloading from Hugging Face.")
+                        pipeline = KPipeline(lang_code='a')
+                    print("[Sidecar] Pipeline initialized successfully.")
+                except Exception as e:
+                    print(f"[Sidecar] CRITICAL: Failed to initialize Pipeline: {e}")
+                    raise e
     return pipeline
+
+
+def warm_pipeline():
+    """Load weights and run one tiny inference before the server reports healthy."""
+    import time
+
+    started_at = time.perf_counter()
+    warmed_pipeline = get_pipeline()
+    bundled_voice = os.path.join(MODEL_DIR, "voices", "am_fenrir.pt")
+    voice_source = bundled_voice if os.path.isfile(bundled_voice) else "am_fenrir"
+    next(warmed_pipeline("Ready.", voice=voice_source, speed=1.0))
+    elapsed_ms = round((time.perf_counter() - started_at) * 1000)
+    print(f"[Sidecar] Pipeline prewarmed in {elapsed_ms}ms.")
+
+
+def warm_speed_processor():
+    """Fail startup early if the packaged real-time DSP cannot load or process."""
+    with SonicSpeedProcessor(initial_speed=1.0) as processor:
+        processor.process(np.zeros((480, 1), dtype=np.float32))
+        processor.flush()
+    print("[Sidecar] Sonic speed DSP ready.")
 
 def cleanup_zombies():
     """ Force-kills any previous instances using a PID file. """
@@ -141,22 +200,40 @@ def cleanup_zombies():
 
 @app.route("/tts", methods=["POST"])
 def tts():
-    # Stop any previous playback immediately
-    stop_event.set()
-    pause_event.clear() # Reset pause on new request
-    sd.stop()
-    
-    p = get_pipeline()
     data = request.json or {}
     text = data.get("text", "")
+    synthesis_segments = normalize_synthesis_segments(data.get("segments"), text)
+    request_id = str(data.get("request_id") or uuid.uuid4()).strip()
     speed = float(data.get("speed", 1.0))
     voice = data.get("voice", "am_fenrir")
     bundled_voice = os.path.join(MODEL_DIR, "voices", f"{voice}.pt")
     voice_source = bundled_voice if os.path.isfile(bundled_voice) else voice
     volume = float(data.get("volume", 1.0))
     
-    if not text:
+    if not synthesis_segments:
         return jsonify({"error": "No text provided"}), 400
+
+    # Each worker captures this token. Starting another request sets only the old
+    # token, so clearing state for the new session can never revive old workers.
+    session = session_controller.begin(request_id, initial_speed=speed)
+    request_cancel_event = session.cancel_event
+    sd.stop()
+    emit_tts_event(
+        "request_received",
+        request_id,
+        textLength=sum(len(segment["spoken_text"]) for segment in synthesis_segments),
+        segmentCount=len(synthesis_segments),
+        voice=voice,
+        speed=speed,
+    )
+
+    try:
+        p = get_pipeline()
+    except Exception as e:
+        emit_tts_event("error", request_id, message=str(e), stage="engine_initialization")
+        session_controller.clear(session)
+        return jsonify({"error": "TTS engine failed to initialize", "request_id": request_id}), 500
+    emit_tts_event("engine_ready", request_id)
         
     meta = f"V:{voice}, S:{speed}, Vol:{volume}"
     if not getattr(sys, 'frozen', False):
@@ -167,150 +244,228 @@ def tts():
     else:
         print(f"[Sidecar] Synthesizing ({meta}, chars:{len(text)})")
     
-    # Small pause to let previous workers exit gracefully
-    import time
-    time.sleep(0.1)
-    stop_event.clear()
-    
     import queue
     audio_queue = queue.Queue(maxsize=10)
+    request_failed_event = threading.Event()
+
+    def put_audio_queue(item):
+        """Apply backpressure without trapping a cancelled generator thread."""
+        while not request_cancel_event.is_set():
+            try:
+                audio_queue.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                continue
+        return False
 
     def generator_worker():
         """ Thread that generates audio tensors as fast as possible. """
         try:
-            generator = p(text, voice=voice_source, speed=speed)
-            for i, (gs, ps, audio) in enumerate(generator):
-                if stop_event.is_set():
+            emit_tts_event("inference_started", request_id)
+            chunk_index = 0
+            for segment in synthesis_segments:
+                if request_cancel_event.is_set():
                     break
-                
-                # Push the raw tensor and its index into the queue
-                audio_queue.put((i, audio))
-                print(f"[Sidecar] Generated chunk {i} (queued)")
+                # The PyTorch pipeline is shared. Serialize model calls so a
+                # replacement request cannot execute concurrently with the old
+                # request while its cancellation reaches a yield boundary.
+                with inference_lock:
+                    if request_cancel_event.is_set():
+                        break
+                    generator = p(
+                        segment["spoken_text"],
+                        voice=voice_source,
+                        # Runtime speed is handled by the streaming Sonic DSP so
+                        # it can change inside already-generated speech.
+                        speed=1.0,
+                    )
+                    for gs, ps, audio in generator:
+                        if request_cancel_event.is_set():
+                            break
+
+                        # The planner bounds segments below Kokoro's token limit, so a
+                        # planned segment normally produces one engine chunk.
+                        queued = put_audio_queue(AudioChunk(
+                            index=chunk_index,
+                            audio=audio,
+                            pause_after_ms=segment["pause_after_ms"],
+                            segment_id=segment["id"],
+                        ))
+                        if not queued:
+                            break
+                        print(f"[Sidecar] Generated chunk {chunk_index} (queued)")
+                        emit_tts_event(
+                            "chunk_ready",
+                            request_id,
+                            chunkIndex=chunk_index,
+                            segmentId=segment["id"],
+                            segmentKind=segment["kind"],
+                            pauseAfterMs=segment["pause_after_ms"],
+                            sampleCount=int(audio.shape[-1]) if hasattr(audio, "shape") else len(audio),
+                        )
+                        chunk_index += 1
+                if request_cancel_event.is_set():
+                    break
             
             # Signal end of generation
-            audio_queue.put((None, None))
+            put_audio_queue(None)
         except Exception as e:
-            print(f"[STATUS] ERROR: {e}")
+            print(f"[Sidecar] Inference error: {e}")
+            request_failed_event.set()
+            emit_tts_event("error", request_id, message=str(e), stage="inference")
             import traceback
             traceback.print_exc()
-            audio_queue.put((None, None))
+            put_audio_queue(None)
 
     def playback_worker():
         """ Thread that consumes from the queue and plays audio. """
         print("[STATUS] START")
-        current_chunk = None
+
+        def emit_control_acknowledgement(event, position):
+            emit_tts_event(
+                event,
+                request_id,
+                chunkIndex=position.chunk_index,
+                sampleOffset=position.sample_offset,
+            )
+
+        def prepare_audio(chunk):
+            audio = chunk.audio
+            if hasattr(audio, "cpu"):
+                played_audio = (audio * volume).cpu().numpy().astype(np.float32)
+            else:
+                played_audio = (np.asarray(audio) * volume).astype(np.float32)
+
+            if len(played_audio.shape) == 1:
+                played_audio = played_audio.reshape(-1, 1)
+
+            pause_sample_count = int(24000 * chunk.pause_after_ms / 1000)
+            if pause_sample_count:
+                played_audio = np.concatenate([
+                    played_audio,
+                    np.zeros((pause_sample_count, 1), dtype=np.float32),
+                ], axis=0)
+
+            max_val = float(np.max(np.abs(played_audio)))
+            rms = float(np.sqrt(np.mean(played_audio**2)))
+            print(f"[Sidecar] Chunk {chunk.index} | Max: {max_val:.4f} | RMS: {rms:.4f}")
+            return played_audio
+
+        def on_first_write(chunk):
+            emit_tts_event(
+                "playback_started",
+                request_id,
+                chunkIndex=chunk.index,
+                segmentId=chunk.segment_id,
+            )
+
+        def process_speed_block(processor, audio):
+            desired_speed, speed_version = session.speed_snapshot()
+            processed = processor.process(audio, speed=desired_speed)
+            if session.acknowledge_speed(speed_version):
+                position = session.position()
+                emit_tts_event(
+                    "speed_changed",
+                    request_id,
+                    speed=desired_speed,
+                    chunkIndex=position.chunk_index,
+                    sampleOffset=position.sample_offset,
+                )
+            return processed
         
         try:
             # Open a persistent stream for the entire session
             # This fixes #9 by avoiding the startup/shutdown latency of sd.play()
-            with sd.OutputStream(samplerate=24000, channels=1, dtype='float32') as stream:
-                stream.start()
-                
-                while not stop_event.is_set():
-                    # If we don't have a chunk (or finished the last one), get the next one
-                    if current_chunk is None:
-                        try:
-                            current_chunk = audio_queue.get(timeout=1.0)
-                        except queue.Empty:
-                            if stop_event.is_set(): break
-                            continue
-                    
-                    i, audio = current_chunk
-                    if i is None: # End of stream
-                        break
-                    
-                    # Wait while paused
-                    if pause_event.is_set():
-                        stream.stop() # Suspends hardware without closing
-                        import time
-                        time.sleep(0.1)
-                        continue
-                    
-                    if not stream.active:
-                        stream.start()
-
-                    # Prepare audio
-                    if hasattr(audio, "cpu"):
-                        played_audio = (audio * volume).cpu().numpy().astype(np.float32)
-                    else:
-                        played_audio = (np.asarray(audio) * volume).astype(np.float32)
-
-                    # Ensure audio is 2D (N,1) for sounddevice
-                    if len(played_audio.shape) == 1:
-                        played_audio = played_audio.reshape(-1, 1)
-
-                    # Issue #9: For the VERY first chunk, prepend 250ms of silence 
-                    # to ensure the initial driver ramp-up doesn't clip.
-                    if i == 0:
-                        initial_silence = np.zeros((6000, 1), dtype=np.float32) # 250ms
-                        played_audio = np.concatenate([initial_silence, played_audio], axis=0)
-                    
-                    # Add a natural pause between sentences (Issue #9 follow-up)
-                    # Tightened for better flow at high speeds.
-                    inter_chunk_silence = np.zeros((4800, 1), dtype=np.float32) # 200ms
-                    played_audio = np.concatenate([played_audio, inter_chunk_silence], axis=0)
-                    
-                    max_val = float(np.max(np.abs(played_audio)))
-                    print(f"[Sidecar] Chunk {i} | Max: {max_val:.4f} | RMS: {float(np.sqrt(np.mean(played_audio**2))):.4f}")
-                    
-                    try:
-                        # Feed the stream in small buffers (50ms) so we can interrupt INSTANTLY
-                        # if the user hits Pause or Stop mid-sentence.
-                        buffer_size = 1200 # 50ms at 24000Hz
-                        interrupted = False
-                        
-                        for start_idx in range(0, len(played_audio), buffer_size):
-                            if stop_event.is_set() or pause_event.is_set():
-                                interrupted = True
-                                break
-                            
-                            end_idx = min(start_idx + buffer_size, len(played_audio))
-                            stream.write(played_audio[start_idx:end_idx])
-                        
-                        if interrupted:
-                            if pause_event.is_set():
-                                stream.stop()
-                                # Do NOT clear current_chunk; it will replay on resume
-                                print(f"[Sidecar] Paused mid-chunk {i}. Ready to replay.")
-                            continue
-
-                        # Finished chunk normally
-                        current_chunk = None
-                        audio_queue.task_done()
-                    except Exception as playback_err:
-                        print(f"[STATUS] ERROR: {playback_err}")
-                        current_chunk = None # Don't get stuck on error
+            with (
+                sd.OutputStream(samplerate=24000, channels=1, dtype='float32') as stream,
+                SonicSpeedProcessor(initial_speed=speed) as speed_processor,
+            ):
+                play_queued_audio(
+                    stream,
+                    audio_queue,
+                    session,
+                    prepare_audio=prepare_audio,
+                    # A 20ms source block becomes at most 40ms at 0.5x, keeping
+                    # pause and speed-command response comfortably sub-100ms.
+                    block_size=960,
+                    on_first_write=on_first_write,
+                    on_paused=lambda position: emit_control_acknowledgement("paused", position),
+                    on_resumed=lambda position: emit_control_acknowledgement("resumed", position),
+                    process_audio_block=lambda audio: process_speed_block(speed_processor, audio),
+                    flush_audio=speed_processor.flush,
+                    source_block_size=480,
+                )
         except Exception as e:
-            print(f"[STATUS] ERROR: {e}")
+            print(f"[Sidecar] Playback stream error: {e}")
+            request_failed_event.set()
+            emit_tts_event("error", request_id, message=str(e), stage="playback")
             
         print("[STATUS] FINISHED")
+        if (
+            not request_failed_event.is_set()
+            and session_controller.is_active(session)
+        ):
+            emit_tts_event("playback_finished", request_id)
+        session_controller.clear(session)
 
     # Start both workers
     threading.Thread(target=generator_worker, daemon=True).start()
     threading.Thread(target=playback_worker, daemon=True).start()
     
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "request_id": request_id})
 
 @app.route("/stop", methods=["POST"])
 def stop():
+    data = request.get_json(silent=True) or {}
+    session, error_response = validate_control_request(data)
+    if error_response:
+        return error_response
     print("[Sidecar] Stopping playback")
-    stop_event.set()
-    pause_event.clear()
+    if session is not None:
+        session.cancel()
     sd.stop()
+    if session is not None:
+        emit_tts_event("cancelled", session.request_id)
+        session_controller.clear(session)
     return jsonify({"status": "stopped"})
 
 @app.route("/pause", methods=["POST"])
 def pause():
+    data = request.get_json(silent=True) or {}
+    session, error_response = validate_control_request(data)
+    if error_response:
+        return error_response
     print("[Sidecar] Pausing playback")
-    pause_event.set()
-    sd.stop()
-    return jsonify({"status": "paused"})
+    if session is not None:
+        session.pause()
+    return jsonify({"status": "pause_requested"})
 
 @app.route("/resume", methods=["POST"])
 def resume():
+    data = request.get_json(silent=True) or {}
+    session, error_response = validate_control_request(data)
+    if error_response:
+        return error_response
     print("[Sidecar] Resuming playback")
-    pause_event.clear()
-    return jsonify({"status": "resumed"})
+    if session is not None:
+        session.resume()
+    return jsonify({"status": "resume_requested"})
+
+@app.route("/speed", methods=["POST"])
+def set_speed():
+    data = request.get_json(silent=True) or {}
+    session, error_response = validate_control_request(data)
+    if error_response:
+        return error_response
+    if session is None:
+        return jsonify({"error": "There is no active playback request"}), 409
+    try:
+        speed = float(data.get("speed"))
+        version = session.set_speed(speed)
+    except (TypeError, ValueError) as error:
+        return jsonify({"error": str(error)}), 400
+    print(f"[Sidecar] Playback speed requested: {speed:.1f}x")
+    return jsonify({"status": "speed_requested", "speed": speed, "version": version})
 
 @app.route("/devices", methods=["GET"])
 def get_devices():
@@ -388,7 +543,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     cleanup_zombies()
-    
+
+    # Health means ready to synthesize, not merely that Flask has bound a port.
+    # This moves cold model/JIT cost into the existing splash startup phase.
+    warm_pipeline()
+    warm_speed_processor()
+
     print(f"[Sidecar] Starting Kokoro TTS server on port {args.port}")
     # Use threaded=True to ensure one hanging request doesn't block the whole server
     app.run(host="127.0.0.1", port=args.port, threaded=True)

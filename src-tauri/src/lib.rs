@@ -5,7 +5,6 @@ use tauri::{
     AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
 };
 
-
 mod sidecar;
 
 use sidecar::SidecarManager;
@@ -16,6 +15,30 @@ pub struct AppState {
     pub tray: Mutex<Option<TrayIcon>>,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClipboardPayload {
+    text: Option<String>,
+    html: Option<String>,
+}
+
+#[tauri::command]
+async fn read_clipboard_payload() -> Result<ClipboardPayload, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut clipboard = arboard::Clipboard::new().map_err(|error| error.to_string())?;
+        let text = clipboard.get_text().ok();
+        let html = clipboard.get().html().ok();
+
+        if text.is_none() && html.is_none() {
+            return Err("The clipboard does not contain readable text".into());
+        }
+
+        Ok(ClipboardPayload { text, html })
+    })
+    .await
+    .map_err(|error| format!("Clipboard read task failed: {error}"))?
+}
+
 // ─── Tauri Commands ───────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -24,6 +47,8 @@ async fn send_to_tts(
     speed: f32,
     voice: String,
     volume: f32,
+    request_id: String,
+    segments: serde_json::Value,
 ) -> Result<String, String> {
     let client = reqwest::Client::new();
     let payload = serde_json::json!({
@@ -31,6 +56,8 @@ async fn send_to_tts(
         "speed": speed,
         "voice": voice,
         "volume": volume,
+        "request_id": request_id,
+        "segments": segments,
     });
 
     let res = client
@@ -41,38 +68,61 @@ async fn send_to_tts(
         .map_err(|e| format!("TTS request failed: {e}"))?;
 
     if res.status().is_success() {
-        Ok("ok".into())
+        Ok(request_id)
     } else {
         Err(format!("TTS server returned {}", res.status()))
     }
 }
 
-#[tauri::command]
-async fn pause_tts() -> Result<(), String> {
+async fn post_playback_control(path: &str, request_id: String) -> Result<(), String> {
     let client = reqwest::Client::new();
-    let _ = client.post("http://127.0.0.1:8790/pause")
+    let res = client
+        .post(format!("http://127.0.0.1:8790/{path}"))
+        .json(&serde_json::json!({ "request_id": request_id }))
         .send()
         .await
         .map_err(|e| e.to_string())?;
-    Ok(())
+
+    if res.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("Playback control returned {}", res.status()))
+    }
 }
 
 #[tauri::command]
-async fn resume_tts() -> Result<(), String> {
+async fn pause_tts(request_id: String) -> Result<(), String> {
+    post_playback_control("pause", request_id).await
+}
+
+#[tauri::command]
+async fn resume_tts(request_id: String) -> Result<(), String> {
+    post_playback_control("resume", request_id).await
+}
+
+#[tauri::command]
+async fn set_tts_speed(request_id: String, speed: f32) -> Result<(), String> {
+    if !(0.5..=2.0).contains(&speed) {
+        return Err("Playback speed must be between 0.5 and 2.0".into());
+    }
     let client = reqwest::Client::new();
-    let _ = client.post("http://127.0.0.1:8790/resume")
+    let res = client
+        .post("http://127.0.0.1:8790/speed")
+        .json(&serde_json::json!({ "request_id": request_id, "speed": speed }))
         .send()
         .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
+        .map_err(|e| format!("Speed request failed: {e}"))?;
+
+    if res.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!("Speed control returned {}", res.status()))
+    }
 }
 
 #[tauri::command]
-async fn stop_tts() -> Result<String, String> {
-    let client = reqwest::Client::new();
-    client
-        .post("http://127.0.0.1:8790/stop")
-        .send()
+async fn stop_tts(request_id: String) -> Result<String, String> {
+    post_playback_control("stop", request_id)
         .await
         .map_err(|e| format!("Stop request failed: {e}"))?;
     Ok("stopped".into())
@@ -86,7 +136,7 @@ async fn get_audio_devices() -> Result<serde_json::Value, String> {
         .send()
         .await
         .map_err(|e| format!("Failed to get devices: {e}"))?;
-        
+
     let json: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
     Ok(json)
 }
@@ -101,7 +151,7 @@ async fn set_audio_device(id: i32) -> Result<serde_json::Value, String> {
         .send()
         .await
         .map_err(|e| format!("Failed to set device: {e}"))?;
-        
+
     let json: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
     Ok(json)
 }
@@ -129,7 +179,8 @@ async fn get_sidecar_status(state: tauri::State<'_, AppState>) -> Result<String,
 #[tauri::command]
 async fn get_sidecar_log_path(state: tauri::State<'_, AppState>) -> Result<String, String> {
     let mgr = state.sidecar.lock().unwrap();
-    Ok(mgr.log_path
+    Ok(mgr
+        .log_path
         .as_ref()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default())
@@ -148,10 +199,13 @@ async fn ensure_reader_visible(app: AppHandle) -> Result<(), String> {
         if !is_visible {
             // Move to cursor and show
             if let Ok(cursor_pos) = app.cursor_position() {
-                let size = win.inner_size().unwrap_or(tauri::PhysicalSize { width: 320, height: 140 });
+                let size = win.inner_size().unwrap_or(tauri::PhysicalSize {
+                    width: 320,
+                    height: 140,
+                });
                 let x = (cursor_pos.x - (size.width as f64 / 2.0)) as i32;
                 let y = (cursor_pos.y - (size.height as f64 / 2.0)) as i32;
-                
+
                 win.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }))
                     .map_err(|e| e.to_string())?;
             }
@@ -173,14 +227,17 @@ async fn hide_reader_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-
-
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let read_clipboard_item =
         MenuItem::with_id(app, "read_clipboard", "Read Clipboard", true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-    let updates_item =
-        MenuItem::with_id(app, "check_updates", "Check for Updates", true, None::<&str>)?;
+    let updates_item = MenuItem::with_id(
+        app,
+        "check_updates",
+        "Check for Updates",
+        true,
+        None::<&str>,
+    )?;
     let tutorial_item = MenuItem::with_id(app, "tutorial", "Tutorial", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Exit", true, None::<&str>)?;
 
@@ -218,16 +275,12 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                     let _ = win.show();
                     let _ = win.set_focus();
                 } else {
-                    let _ = WebviewWindowBuilder::new(
-                        app,
-                        "settings",
-                        WebviewUrl::App("/".into()),
-                    )
-                    .title("Kokoro TTS — Settings")
-                    .inner_size(480.0, 600.0)
-                    .resizable(false)
-                    .center()
-                    .build();
+                    let _ = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("/".into()))
+                        .title("Kokoro TTS — Settings")
+                        .inner_size(480.0, 600.0)
+                        .resizable(false)
+                        .center()
+                        .build();
                 }
             }
             "check_updates" => {
@@ -238,17 +291,13 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                     let _ = win.show();
                     let _ = win.set_focus();
                 } else {
-                    let _ = WebviewWindowBuilder::new(
-                        app,
-                        "tutorial",
-                        WebviewUrl::App("/".into()),
-                    )
-                    .title("Welcome to Kokoro TTS")
-                    .inner_size(520.0, 480.0)
-                    .resizable(false)
-                    .center()
-                    .decorations(false)
-                    .build();
+                    let _ = WebviewWindowBuilder::new(app, "tutorial", WebviewUrl::App("/".into()))
+                        .title("Welcome to Kokoro TTS")
+                        .inner_size(520.0, 480.0)
+                        .resizable(false)
+                        .center()
+                        .decorations(false)
+                        .build();
                 }
             }
             "quit" => {
@@ -281,16 +330,14 @@ pub fn run() {
     // If the app is already running, focus the existing instance and exit.
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(
-            |app, _args, _cwd| {
-                // When a second instance is launched, just show the settings window
-                // of the already-running instance so the user knows it's alive.
-                if let Some(win) = app.get_webview_window("settings") {
-                    let _ = win.show();
-                    let _ = win.set_focus();
-                }
-            },
-        ));
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // When a second instance is launched, just show the settings window
+            // of the already-running instance so the user knows it's alive.
+            if let Some(win) = app.get_webview_window("settings") {
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }));
     }
 
     let builder = builder
@@ -306,9 +353,11 @@ pub fn run() {
             tray: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
+            read_clipboard_payload,
             send_to_tts,
             pause_tts,
             resume_tts,
+            set_tts_speed,
             stop_tts,
             ensure_reader_visible,
             hide_reader_window,
@@ -345,10 +394,13 @@ pub fn run() {
                     })
                     .build(),
             )?;
-            app.global_shortcut().register(shortcut).map_err(|e| {
-                eprintln!("[Kokoro] Failed to register shortcut: {e}");
-                e
-            }).ok();
+            app.global_shortcut()
+                .register(shortcut)
+                .map_err(|e| {
+                    eprintln!("[Kokoro] Failed to register shortcut: {e}");
+                    e
+                })
+                .ok();
 
             // ── Background Clipboard Poller ──────────────────────────────────────────
             // Monitors for any global clipboard change without intercepting shortcuts.
@@ -357,13 +409,18 @@ pub fn run() {
             let handle_for_polling = handle.clone();
             tauri::async_runtime::spawn(async move {
                 // Initialize with current clipboard content to avoid flash on startup
-                let mut last_clipboard = handle_for_polling.clipboard().read_text().unwrap_or_default();
+                let mut last_clipboard = handle_for_polling
+                    .clipboard()
+                    .read_text()
+                    .unwrap_or_default();
                 loop {
                     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
                     if let Ok(current) = handle_for_polling.clipboard().read_text() {
                         if !current.is_empty() && current != last_clipboard {
                             // Only emit if the reader widget is actually open
-                            let is_visible = if let Some(win) = handle_for_polling.get_webview_window("reader") {
+                            let is_visible = if let Some(win) =
+                                handle_for_polling.get_webview_window("reader")
+                            {
                                 win.is_visible().unwrap_or(false)
                             } else {
                                 false

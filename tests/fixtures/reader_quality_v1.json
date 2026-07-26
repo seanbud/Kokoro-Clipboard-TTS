@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 1,
+  "name": "Kokoro Clipboard TTS reader quality corpus",
+  "description": "Source text fixtures for deterministic planning, listening comparisons, and latency benchmarks. Expected spoken forms are added as the corresponding product decisions are approved.",
+  "cases": [
+    {
+      "id": "structure-paragraph-breaks",
+      "category": "structure",
+      "priority": "critical",
+      "input": "The first idea needs time to land.\n\nThe second idea should begin after a noticeable pause.",
+      "concerns": ["paragraph-boundary", "pause-duration"]
+    },
+    {
+      "id": "structure-heading-and-body",
+      "category": "structure",
+      "priority": "high",
+      "input": "## Why this matters\nA heading should not run directly into its explanation.",
+      "concerns": ["markdown-heading", "section-boundary"]
+    },
+    {
+      "id": "structure-plain-heading-linebreak",
+      "category": "structure",
+      "priority": "critical",
+      "input": "Why this matters\nThe listener needs a brief pause before this explanation begins.",
+      "expectedSpokenSegments": ["Why this matters", "The listener needs a brief pause before this explanation begins."],
+      "concerns": ["plain-text-heading-inference", "single-line-break", "section-boundary"]
+    },
+    {
+      "id": "structure-list-items",
+      "category": "structure",
+      "priority": "critical",
+      "input": "We need three things:\n- exact pause and resume\n- faster first audio\n- clearer progress feedback",
+      "concerns": ["list-boundary", "enumeration-prosody"]
+    },
+    {
+      "id": "structure-quote",
+      "category": "structure",
+      "priority": "medium",
+      "input": "She paused before answering.\n\n> I don't think that follows from the evidence.\n\nThen the room went quiet.",
+      "concerns": ["blockquote", "speaker-transition"]
+    },
+    {
+      "id": "chat-ok-ellipsis",
+      "category": "chat",
+      "priority": "critical",
+      "input": "Ok.. I see what you mean. But what if we tried it another way?",
+      "expectedSpokenSegments": ["Okay..", "I see what you mean.", "But what if we tried it another way?"],
+      "concerns": ["okay-pronunciation", "ellipsis", "thought-boundary"]
+    },
+    {
+      "id": "chat-what-if-fragment",
+      "category": "chat",
+      "priority": "critical",
+      "input": "What if.. instead of waiting for the whole response, we started with the first clause?",
+      "expectedSpokenSegments": ["What if..", "instead of waiting for the whole response, we started with the first clause?"],
+      "concerns": ["fragment-pause", "ellipsis", "stress"]
+    },
+    {
+      "id": "chat-idk-lol",
+      "category": "chat",
+      "priority": "critical",
+      "input": "idk, that result looks wrong lol. Can you check it again?",
+      "expectedSpokenSegments": ["I D K, that result looks wrong L O L.", "Can you check it again?"],
+      "concerns": ["shorthand", "acronym-expansion", "sentence-tone"]
+    },
+    {
+      "id": "chat-mixed-case-shorthand",
+      "category": "chat",
+      "priority": "high",
+      "input": "TBH I expected a different answer, but imo this is still useful.",
+      "expectedSpokenSegments": ["T B H I expected a different answer, but I M O this is still useful."],
+      "concerns": ["case-insensitive-shorthand", "acronym-boundaries"]
+    },
+    {
+      "id": "acronyms-common-technical",
+      "category": "acronyms",
+      "priority": "critical",
+      "input": "The API sends JSON over HTTP, while the GPU runs the TTS model.",
+      "concerns": ["initialism", "known-acronym", "stress"]
+    },
+    {
+      "id": "acronyms-word-collisions",
+      "category": "acronyms",
+      "priority": "high",
+      "input": "The US office asked us to update the policy.",
+      "concerns": ["case-sensitive-meaning", "word-boundary"]
+    },
+    {
+      "id": "numbers-currency-percent",
+      "category": "numbers",
+      "priority": "critical",
+      "input": "The total increased from $12.50 to $19.99, or about 59.9%.",
+      "concerns": ["currency", "decimal", "percentage"]
+    },
+    {
+      "id": "numbers-date-and-time",
+      "category": "numbers",
+      "priority": "critical",
+      "input": "The meeting is on 2026-07-25 at 3:05 p.m.",
+      "concerns": ["iso-date", "time", "abbreviation"]
+    },
+    {
+      "id": "numbers-version-and-range",
+      "category": "numbers",
+      "priority": "high",
+      "input": "Upgrade from v0.6.3 to v0.7.0, then test speeds from 0.5x to 2.0x.",
+      "concerns": ["semantic-version", "decimal", "range", "multiplier"]
+    },
+    {
+      "id": "numbers-long-digits",
+      "category": "numbers",
+      "priority": "high",
+      "input": "Use confirmation code 408271 and ticket number 1200459931.",
+      "concerns": ["digit-grouping", "identifier-not-cardinal"]
+    },
+    {
+      "id": "technical-url-email-path",
+      "category": "technical",
+      "priority": "critical",
+      "input": "Open https://example.com/docs, email support@example.com, or inspect /Users/me/project/app.ts.",
+      "concerns": ["url-policy", "email-policy", "filesystem-path"]
+    },
+    {
+      "id": "technical-identifiers",
+      "category": "technical",
+      "priority": "critical",
+      "input": "Call getUserProfile, then assign request_id to activeSessionRef.",
+      "concerns": ["camel-case", "snake-case", "identifier-boundary"]
+    },
+    {
+      "id": "technical-units",
+      "category": "technical",
+      "priority": "high",
+      "input": "The buffer contains 1,200 samples at 24 kHz and represents 50 ms of audio.",
+      "concerns": ["thousands-separator", "unit", "abbreviation"]
+    },
+    {
+      "id": "code-inline",
+      "category": "code",
+      "priority": "high",
+      "input": "Set `playbackRate = 1.25` before calling `stream.start()`.",
+      "concerns": ["inline-code", "identifier", "decimal"]
+    },
+    {
+      "id": "code-fenced-block",
+      "category": "code",
+      "priority": "critical",
+      "input": "Run this example:\n```python\nfor chunk in audio_queue:\n    stream.write(chunk)\n```\nThen confirm playback finishes.",
+      "concerns": ["code-policy", "fenced-code", "transition-back-to-prose"]
+    },
+    {
+      "id": "punctuation-parenthetical-dash",
+      "category": "punctuation",
+      "priority": "high",
+      "input": "The default engine—Kokoro—is stable (and completely local), but it is not always natural.",
+      "concerns": ["em-dash", "parenthetical", "clause-stress"]
+    },
+    {
+      "id": "punctuation-question-sequence",
+      "category": "punctuation",
+      "priority": "high",
+      "input": "Did it pause? Did it resume from the same place? Did the speed actually change?",
+      "concerns": ["repeated-question-prosody", "sentence-boundary"]
+    },
+    {
+      "id": "long-form-multiple-thoughts",
+      "category": "long-form",
+      "priority": "critical",
+      "input": "A fast reader is useful only when it remains understandable. If each sentence arrives with the same rhythm, the listener has no indication which ideas are supporting details and which ones are conclusions.\n\nThe system should therefore preserve paragraph structure, produce the first clause quickly, and continue generating later sentences while playback is already underway.",
+      "concerns": ["long-form-flow", "paragraph-boundary", "lookahead", "thought-digestion"]
+    },
+    {
+      "id": "long-form-single-sentence",
+      "category": "long-form",
+      "priority": "critical",
+      "input": "Although the model can generate a long sentence as one chunk, doing so delays the first audible sample, makes interruption less precise, and leaves the listener waiting even when the opening clause could already have been spoken.",
+      "concerns": ["clause-segmentation", "first-audio-latency", "prosody-context"]
+    },
+    {
+      "id": "privacy-sensitive-shape",
+      "category": "privacy",
+      "priority": "critical",
+      "input": "Account reference AB-2048-XY should be read locally and must never appear in release logs.",
+      "concerns": ["identifier", "release-log-redaction", "offline-only"]
+    }
+  ]
+}

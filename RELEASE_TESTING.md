@@ -30,36 +30,35 @@ Always ensure your `requirements.txt` precisely matches what your local virtual 
 
 ---
 
-## Step 2: Download Necessary Models Locally (Simulating CI)
-The CI downloads the model to `sidecar/model` before freezing it. You need to do this locally as well before running PyInstaller:
+## Step 2: Download the v1.0 Model (Simulating CI)
+The CI downloads the official Kokoro v1.0 weights and voices to `sidecar/model` before freezing. Use the same pinned file set locally:
 
-**In PowerShell:**
 ```powershell
-New-Item -ItemType Directory -Force -Path sidecar\model
-Invoke-WebRequest -Uri "https://github.com/hexgrad/kokoro/raw/main/kokoro-v0.19.onnx" -OutFile "sidecar\model\kokoro-v0.19.onnx"
-Invoke-WebRequest -Uri "https://github.com/hexgrad/kokoro/raw/main/voices.json" -OutFile "sidecar\model\voices.json"
+python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='hexgrad/Kokoro-82M', local_dir='sidecar/model', allow_patterns=['config.json', 'kokoro-v1_0.pth', 'voices/*.pt'])"
 ```
 
-**In Git Bash:**
-```bash
-mkdir -p sidecar/model
-curl -L -o sidecar/model/kokoro-v0.19.onnx https://github.com/hexgrad/kokoro/raw/main/kokoro-v0.19.onnx
-curl -L -o sidecar/model/voices.json https://github.com/hexgrad/kokoro/raw/main/voices.json
-```
+Verify that `sidecar/model/config.json`, `sidecar/model/kokoro-v1_0.pth`, and at least one file under `sidecar/model/voices/` exist.
 
 ---
 
 ## Step 3: PyInstaller Freeze (Simulating CI)
 From your root repository (make sure your `.sidecar-venv` is activated):
 
+Build the vendored Sonic real-time speed library first:
+
+```powershell
+python scripts/build_sonic_dsp.py
+```
+
 **In PowerShell:**
 ```powershell
 pyinstaller --onefile --name kokoro `
   --add-data "sidecar/model;model" `
+  --add-binary "sidecar/native/sonic_kctts.dll;native" `
   --collect-all onnxruntime `
   --collect-all kokoro `
   --collect-all misaki `
-  --collect-all phonemizer-fork `
+  --collect-all phonemizer `
   --collect-all language_tags `
   --collect-all espeakng_loader `
   --collect-all huggingface_hub `
@@ -68,6 +67,8 @@ pyinstaller --onefile --name kokoro `
   --collect-all torch `
   --collect-all loguru `
   --collect-all transformers `
+  --collect-all spacy `
+  --collect-all en_core_web_sm `
   sidecar/kokoro_server.py
 ```
 
@@ -75,10 +76,11 @@ pyinstaller --onefile --name kokoro `
 ```bash
 pyinstaller --onefile --name kokoro \
   --add-data "sidecar/model;model" \
+  --add-binary "sidecar/native/sonic_kctts.dll;native" \
   --collect-all onnxruntime \
   --collect-all kokoro \
   --collect-all misaki \
-  --collect-all phonemizer-fork \
+  --collect-all phonemizer \
   --collect-all language_tags \
   --collect-all espeakng_loader \
   --collect-all huggingface_hub \
@@ -87,6 +89,8 @@ pyinstaller --onefile --name kokoro \
   --collect-all torch \
   --collect-all loguru \
   --collect-all transformers \
+  --collect-all spacy \
+  --collect-all en_core_web_sm \
   sidecar/kokoro_server.py
 ```
 
@@ -98,7 +102,13 @@ Run your newly built `.exe` from the `dist` folder:
 .\dist\kokoro.exe --port 8791
 ```
 
-Send a test POST request to it from another terminal to ensure it loads everything without crashing:
+Wait for the health endpoint before testing audio. Startup now prewarms both Kokoro and the Sonic speed processor:
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8791/health"
+```
+
+Then send a test-audio request:
 
 **In PowerShell:**
 ```powershell
@@ -109,4 +119,4 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8791/test_audio" -Method POST -Body "{}
 ```bash
 curl -X POST http://127.0.0.1:8791/test_audio -H "Content-Type: application/json" -d "{}"
 ```
-If you hear the beep and see no errors in the console, your frozen sidecar is solid and safe to release!
+The beep is only a packaging smoke test. Before release, also run the Python, frontend, and Rust suites; synthesize the reader corpus; verify a mid-sentence speed change; and complete the manual/soak gates in `ROADMAP.md`.

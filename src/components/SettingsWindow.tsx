@@ -32,6 +32,7 @@ export default function SettingsWindow() {
   const [recording, setRecording] = useState(false);
   const [saved, setSaved] = useState(false);
   const [volume, setVolume] = useState(1.0);
+  const [skipCodeBlocks, setSkipCodeBlocks] = useState(false);
   
   const [devices, setDevices] = useState<{id: number, name: string}[]>([]);
   const [currentDevice, setCurrentDevice] = useState<number>(0);
@@ -67,6 +68,8 @@ export default function SettingsWindow() {
       if (typeof vol === 'number') {
         setVolume(vol);
       }
+      const skipCode = await store.get<boolean>("skip-code-blocks");
+      if (typeof skipCode === "boolean") setSkipCodeBlocks(skipCode);
     })();
   }, []);
 
@@ -77,7 +80,9 @@ export default function SettingsWindow() {
     await store.set("shortcut", shortcut);
     await store.set("shortcut-enabled", shortcutEnabled);
     await store.set("volume", volume);
+    await store.set("skip-code-blocks", skipCodeBlocks);
     await store.save();
+    await emit("settings-updated", { skipCodeBlocks });
 
     // Re-register the shortcut
     try {
@@ -102,7 +107,7 @@ export default function SettingsWindow() {
 
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-  }, [voice, shortcut, shortcutEnabled, volume]);
+  }, [voice, shortcut, shortcutEnabled, volume, skipCodeBlocks]);
 
   // ── Key recorder ──
   const handleKeyRecord = useCallback((e: React.KeyboardEvent) => {
@@ -221,6 +226,28 @@ export default function SettingsWindow() {
             onChange={(e) => setVolume(parseFloat(e.target.value))}
             className="w-full h-1.5 rounded-lg appearance-none cursor-pointer bg-[#2D2D2D] accent-[#8AB4F8] hover:accent-[#AECBFA] transition-smooth"
           />
+        </div>
+
+        {/* Code behavior */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-sm text-white/70">Skip Code Blocks</div>
+            <p className="mt-1 text-[11px] leading-relaxed text-white/35">
+              Always announces the block. When enabled, says “Code block skipped” instead of reading it.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={skipCodeBlocks}
+            aria-label="Skip code blocks"
+            onClick={() => setSkipCodeBlocks(!skipCodeBlocks)}
+            className={`mt-0.5 w-10 h-5 shrink-0 rounded-full transition-smooth relative ${skipCodeBlocks ? "bg-[#8AB4F8]" : "bg-white/10"}`}
+          >
+            <span
+              className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-smooth ${skipCodeBlocks ? "left-5.5 bg-[#202124]" : "left-0.5 bg-white/40"}`}
+            />
+          </button>
         </div>
 
         {/* Global Shortcut */}

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            platform: windows-latest
+            sidecar: src-tauri/binaries/kokoro-x86_64-pc-windows-msvc.exe
+          - name: macOS Apple Silicon
+            platform: macos-15
+            sidecar: src-tauri/binaries/kokoro-aarch64-apple-darwin
+          - name: macOS Intel
+            platform: macos-15-intel
+            sidecar: src-tauri/binaries/kokoro-x86_64-apple-darwin
+
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup MSVC developer environment
+        if: matrix.platform == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build and test native speech-rate DSP
+        run: |
+          python -m pip install --disable-pip-version-check numpy
+          python scripts/build_sonic_dsp.py
+          python -m unittest discover -s sidecar -p "test_*.py"
+          python -m unittest discover -s scripts -p "test_*.py"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Test and build frontend
+        run: |
+          npm test -- --run
+          npm run build
+
+      - name: Prepare Tauri test sidecar placeholder
+        run: python -c "from pathlib import Path; path = Path(r'${{ matrix.sidecar }}'); path.parent.mkdir(parents=True, exist_ok=True); path.touch()"
+
+      - name: Test Rust bridge
+        working-directory: src-tauri
+        run: cargo test

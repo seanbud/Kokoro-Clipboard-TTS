@@ -46,6 +46,9 @@ def run():
         env=venv_env,
     )
 
+    print("Building Sonic real-time speed DSP...")
+    subprocess.check_call([venv_python, os.path.join("scripts", "build_sonic_dsp.py")])
+
     # 4. Build with PyInstaller
     print("Building sidecar executable...")
     # We use --onefile and --name kokoro
@@ -69,6 +72,13 @@ def run():
         "--collect-all", "spacy",
         "--collect-all", "en_core_web_sm",
     ]
+    if os.name == 'nt':
+        sonic_library = os.path.join("sidecar", "native", "sonic_kctts.dll")
+    elif sys.platform == 'darwin':
+        sonic_library = os.path.join("sidecar", "native", "libsonic_kctts.dylib")
+    else:
+        sonic_library = os.path.join("sidecar", "native", "libsonic_kctts.so")
+    pyinstaller_args.extend(["--add-binary", f"{sonic_library}{os.pathsep}native"])
     if os.name != 'nt':
         # macOS validates code signatures when PyInstaller's onefile bootloader
         # extracts and loads the bundled Python framework. Sign all collected
