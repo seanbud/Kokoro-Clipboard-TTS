@@ -127,6 +127,41 @@
     position: relative;
   }
 
+  .generation-progress-track {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 0;
+    height: 2px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    pointer-events: none;
+  }
+
+  .generation-progress-value,
+  .generation-progress-indeterminate {
+    width: 100%;
+    height: 100%;
+    transform-origin: left center;
+    border-radius: inherit;
+    background: rgba(250, 204, 21, 0.7);
+  }
+
+  .generation-progress-value {
+    transition: transform 100ms linear;
+  }
+
+  .generation-progress-indeterminate {
+    width: 38%;
+    animation: generation-progress-scan 1.1s ease-in-out infinite;
+  }
+
+  @keyframes generation-progress-scan {
+    from { transform: translateX(-110%); }
+    to { transform: translateX(365%); }
+  }
+
   .animate-text-update {
     animation: text-update 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   }

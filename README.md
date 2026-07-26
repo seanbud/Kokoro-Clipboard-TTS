@@ -65,6 +65,8 @@ Please check out our **[Contributing Guide](.agent/CONTRIBUTING.md)** for full d
 
 *The React frontend communicates via Tauri with the Rust backend, which securely manages a headless local Python server running the Kokoro TTS engine.*
 
+The Python sidecar is packaged as a standalone executable during release builds, so users do not need to install Python or set up the AI stack manually. It bundles the Kokoro runtime and its supporting libraries, including `torch`, `onnxruntime`, `phonemizer`, `espeak-ng` data, and the model weights/voices used for offline synthesis. That keeps the app fully local while still shipping the native ML dependencies needed to generate speech.
+
 ---
 
 ## 📁 Project Structure

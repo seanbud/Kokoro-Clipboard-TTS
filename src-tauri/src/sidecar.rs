@@ -1,8 +1,27 @@
-use std::sync::{Arc, Mutex};
+use serde::{Deserialize, Serialize};
 use std::io::Write;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
-use std::time::Duration;
+
+const TTS_EVENT_PREFIX: &str = "[TTS_EVENT] ";
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TtsEvent {
+    schema_version: u8,
+    request_id: String,
+    event: String,
+    timestamp_ms: u64,
+    #[serde(default)]
+    data: serde_json::Value,
+}
+
+fn parse_tts_event(line: &str) -> Option<TtsEvent> {
+    let payload = line.trim().strip_prefix(TTS_EVENT_PREFIX)?;
+    serde_json::from_str(payload).ok()
+}
 
 /// Manages the lifecycle of the Kokoro TTS sidecar process.
 ///
@@ -18,7 +37,7 @@ pub struct SidecarManager {
 
 impl SidecarManager {
     pub fn new() -> Self {
-        Self { 
+        Self {
             child: None,
             status: Arc::new(Mutex::new("disconnected".into())),
             log_path: None,
@@ -37,7 +56,10 @@ impl SidecarManager {
 
         // ─── Open sidecar log file ───
         // All sidecar stdout/stderr is captured here so users can diagnose errors.
-        let log_dir = app.path().app_log_dir().unwrap_or_else(|_| std::env::temp_dir());
+        let log_dir = app
+            .path()
+            .app_log_dir()
+            .unwrap_or_else(|_| std::env::temp_dir());
         let _ = std::fs::create_dir_all(&log_dir);
         let log_path = log_dir.join("kokoro-sidecar.log");
         let log_file = std::fs::OpenOptions::new()
@@ -64,12 +86,12 @@ impl SidecarManager {
             let _ = std::process::Command::new("taskkill")
                 .args(["/F", "/IM", "kokoro.exe", "/T"])
                 .output();
-                
+
             // Kill anything holding port 8790 (zombie python.exe from dev mode)
             let _ = std::process::Command::new("powershell")
                 .args(["-Command", "Get-NetTCPConnection -LocalPort 8790 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"])
                 .output();
-            
+
             // Brief pause to let the port fully release
             std::thread::sleep(Duration::from_millis(200));
         }
@@ -86,12 +108,12 @@ impl SidecarManager {
             let _ = std::process::Command::new("pkill")
                 .args(["-f", "kokoro-aarch64-apple-darwin"])
                 .output();
-                
+
             // Forcefully free port 8790
             let _ = std::process::Command::new("sh")
                 .args(["-c", "lsof -ti:8790 | xargs kill -9 2>/dev/null"])
                 .output();
-                
+
             std::thread::sleep(Duration::from_millis(200));
         }
 
@@ -104,68 +126,90 @@ impl SidecarManager {
         println!("[Kokoro] Attempting to spawn sidecar...");
 
         // ─── Development vs Production Spawning ───
-        
+
         let (mut rx, child) = if cfg!(debug_assertions) {
             println!("[Kokoro] DEBUG MODE: Spawning sidecar from source using venv...");
-            
+
             // Resolve project root robustly
-            let mut project_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            
+            let mut project_root =
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+
             // If we are currently in src-tauri, go up one level
             if project_root.ends_with("src-tauri") {
                 project_root = project_root.parent().unwrap().to_path_buf();
             }
 
             let mut python_path = if cfg!(target_os = "windows") {
-                project_root.join(".sidecar-venv").join("Scripts").join("python.exe")
+                project_root
+                    .join(".sidecar-venv")
+                    .join("Scripts")
+                    .join("python.exe")
             } else {
-                project_root.join(".sidecar-venv").join("bin").join("python")
+                project_root
+                    .join(".sidecar-venv")
+                    .join("bin")
+                    .join("python")
             };
-            
+
             let script_path = project_root.join("sidecar").join("kokoro_server.py");
 
             // If not found at current_dir, try a few levels up (sometimes dev runners change CWD)
             if !python_path.exists() {
-               if let Ok(exe_path) = std::env::current_exe() {
-                   let mut p = exe_path.clone();
-                   // Try to find the root by looking for .sidecar-venv
-                   for _ in 0..10 {
-                       if p.join(".sidecar-venv").exists() {
-                           project_root = p;
-                           python_path = if cfg!(target_os = "windows") {
-                               project_root.join(".sidecar-venv").join("Scripts").join("python.exe")
-                           } else {
-                               project_root.join(".sidecar-venv").join("bin").join("python")
-                           };
-                           break;
-                       }
-                       if let Some(parent) = p.parent() {
-                           p = parent.to_path_buf();
-                       } else {
-                           break;
-                       }
-                   }
-               }
+                if let Ok(exe_path) = std::env::current_exe() {
+                    let mut p = exe_path.clone();
+                    // Try to find the root by looking for .sidecar-venv
+                    for _ in 0..10 {
+                        if p.join(".sidecar-venv").exists() {
+                            project_root = p;
+                            python_path = if cfg!(target_os = "windows") {
+                                project_root
+                                    .join(".sidecar-venv")
+                                    .join("Scripts")
+                                    .join("python.exe")
+                            } else {
+                                project_root
+                                    .join(".sidecar-venv")
+                                    .join("bin")
+                                    .join("python")
+                            };
+                            break;
+                        }
+                        if let Some(parent) = p.parent() {
+                            p = parent.to_path_buf();
+                        } else {
+                            break;
+                        }
+                    }
+                }
             }
 
             println!("[Kokoro] Final Project Root: {:?}", project_root);
             println!("[Kokoro] Venv Python: {:?}", python_path);
 
             if !python_path.exists() {
-                return Err(format!("Python venv not found. Tried looking in {:?} and path {:?}", project_root, python_path));
+                return Err(format!(
+                    "Python venv not found. Tried looking in {:?} and path {:?}",
+                    project_root, python_path
+                ));
             }
 
-            let cmd = app.shell().command(python_path.to_string_lossy().to_string())
+            let cmd = app
+                .shell()
+                .command(python_path.to_string_lossy().to_string())
                 .args([script_path.to_string_lossy().to_string()]);
-            
-            cmd.spawn().map_err(|e| format!("Failed to spawn python source: {e}"))?
+
+            cmd.spawn()
+                .map_err(|e| format!("Failed to spawn python source: {e}"))?
         } else {
             println!("[Kokoro] RELEASE MODE: Spawning bundled sidecar binary...");
-            let sidecar = app.shell()
+            let sidecar = app
+                .shell()
                 .sidecar("kokoro")
                 .map_err(|e| format!("Failed to create sidecar command: {e}"))?;
 
-            sidecar.spawn().map_err(|e| format!("Failed to spawn sidecar binary: {e}"))?
+            sidecar
+                .spawn()
+                .map_err(|e| format!("Failed to spawn sidecar binary: {e}"))?
         };
 
         let log_file_arc2 = Arc::clone(&log_file_arc);
@@ -183,8 +227,29 @@ impl SidecarManager {
                                 let _ = writeln!(f, "{}", line_str.trim_end());
                             }
                         }
-                        // Emit events based on sidecar logs for the frontend
-                        if line_str.contains("Chunk 0") {
+                        // Structured lifecycle events are forwarded verbatim. Legacy log
+                        // parsing remains temporarily for compatibility with old sidecars.
+                        if let Some(tts_event) = parse_tts_event(&line_str) {
+                            if tts_event.event == "error" {
+                                let error_msg = tts_event
+                                    .data
+                                    .get("message")
+                                    .and_then(|value| value.as_str())
+                                    .unwrap_or("Unknown TTS error");
+                                if let Ok(mut f) = std::fs::OpenOptions::new()
+                                    .create(true)
+                                    .append(true)
+                                    .open(&log_path_for_errors)
+                                {
+                                    let _ = writeln!(
+                                        f,
+                                        "[TTS ERROR request={}] {}",
+                                        tts_event.request_id, error_msg,
+                                    );
+                                }
+                            }
+                            let _ = handle_for_stdout.emit("tts-event", tts_event);
+                        } else if line_str.contains("Chunk 0") {
                             let _ = handle_for_stdout.emit("tts-speaking", ());
                         } else if line_str.contains("[STATUS] FINISHED") {
                             let _ = handle_for_stdout.emit("tts-finished", ());
@@ -237,7 +302,7 @@ impl SidecarManager {
         });
 
         self.child = Some(child);
-        
+
         // ─── Health Check Polling ───
         let handle_for_health = app.clone();
         let status_arc = Arc::clone(&self.status);
@@ -246,12 +311,12 @@ impl SidecarManager {
                 .timeout(Duration::from_millis(500))
                 .build()
                 .unwrap_or_default();
-            
+
             let mut attempts = 0;
             // PyInstaller one-file bundles can take close to a minute to
             // extract and import Torch on first launch, especially on macOS.
             let max_attempts = 180; // ~90 seconds when connections are refused quickly
-            
+
             while attempts < max_attempts {
                 match client.get("http://127.0.0.1:8790/health").send().await {
                     Ok(res) if res.status().is_success() => {
@@ -267,13 +332,16 @@ impl SidecarManager {
                     _ => {
                         attempts += 1;
                         if attempts % 10 == 0 {
-                            println!("[Kokoro] Waiting for sidecar health check... (attempt {})", attempts);
+                            println!(
+                                "[Kokoro] Waiting for sidecar health check... (attempt {})",
+                                attempts
+                            );
                         }
                         tokio::time::sleep(Duration::from_millis(500)).await;
                     }
                 }
             }
-            
+
             if attempts >= max_attempts {
                 eprintln!("[Kokoro] Sidecar health check timed out.");
                 {
@@ -291,7 +359,7 @@ impl SidecarManager {
     pub fn kill(&mut self) {
         if let Some(child) = self.child.take() {
             let pid = child.pid();
-            
+
             #[cfg(target_os = "windows")]
             {
                 // Force kill the process tree to ensure spawned multiprocessing workers die
@@ -315,7 +383,10 @@ impl SidecarManager {
                     *s = "disconnected".into();
                 }
                 Err(e) => {
-                    println!("[Kokoro] Sidecar killed or already dead (PID: {}). Error: {}", pid, e);
+                    println!(
+                        "[Kokoro] Sidecar killed or already dead (PID: {}). Error: {}",
+                        pid, e
+                    );
                     let mut s = self.status.lock().unwrap();
                     *s = "disconnected".into();
                 }
@@ -331,5 +402,33 @@ impl SidecarManager {
 impl Drop for SidecarManager {
     fn drop(&mut self) {
         self.kill();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_tts_event, TTS_EVENT_PREFIX};
+
+    #[test]
+    fn parses_structured_tts_event() {
+        let line = concat!(
+            "[TTS_EVENT] ",
+            r#"{"schemaVersion":1,"requestId":"request-123","event":"chunk_ready","timestampMs":42,"data":{"chunkIndex":0}}"#,
+        );
+
+        let event = parse_tts_event(line).expect("event should parse");
+
+        assert_eq!(event.schema_version, 1);
+        assert_eq!(event.request_id, "request-123");
+        assert_eq!(event.event, "chunk_ready");
+        assert_eq!(event.timestamp_ms, 42);
+        assert_eq!(event.data["chunkIndex"], 0);
+    }
+
+    #[test]
+    fn ignores_human_readable_and_malformed_logs() {
+        assert!(parse_tts_event("[Sidecar] Generated chunk 0").is_none());
+        assert!(parse_tts_event(TTS_EVENT_PREFIX).is_none());
+        assert!(parse_tts_event("[TTS_EVENT] {not-json}").is_none());
     }
 }

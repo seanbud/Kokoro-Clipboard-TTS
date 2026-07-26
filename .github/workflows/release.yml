@@ -88,6 +88,10 @@ jobs:
         with:
           targets: ${{ startsWith(matrix.platform, 'macos-') && matrix.target || '' }}
 
+      - name: Setup MSVC developer environment
+        if: matrix.platform == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
       - name: Download offline model bundle
         uses: actions/download-artifact@v4
         with:
@@ -109,17 +113,22 @@ jobs:
       - name: Build Sidecar with PyInstaller
         shell: bash
         run: |
+          python scripts/build_sonic_dsp.py
+
           # Use platform-specific separator for --add-data
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then
             SEP=";"
+            SONIC_LIBRARY="sidecar/native/sonic_kctts.dll"
             CODESIGN_ARGS=()
           else
             SEP=":"
+            SONIC_LIBRARY="sidecar/native/libsonic_kctts.dylib"
             CODESIGN_ARGS=(--codesign-identity - --osx-entitlements-file src-tauri/sidecar.entitlements.plist)
           fi
           pyinstaller --onefile --name kokoro \
             "${CODESIGN_ARGS[@]}" \
             --add-data "sidecar/model${SEP}model" \
+            --add-binary "${SONIC_LIBRARY}${SEP}native" \
             --collect-all onnxruntime \
             --collect-all kokoro \
             --collect-all misaki \
@@ -141,6 +150,12 @@ jobs:
           else
             mv dist/kokoro "src-tauri/binaries/kokoro-${{ matrix.target }}"
           fi
+
+      - name: Run Python tests
+        shell: bash
+        run: |
+          python -m unittest discover -s sidecar -p 'test_*.py'
+          python -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Verify frozen sidecar startup
         shell: bash
