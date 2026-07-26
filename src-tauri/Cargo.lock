@@ -2300,7 +2300,7 @@ dependencies = [
 
 [[package]]
 name = "kokoro-clipboard-tts"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "arboard",
  "reqwest 0.12.28",

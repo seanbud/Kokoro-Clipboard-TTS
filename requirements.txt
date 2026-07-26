@@ -1,11 +1,15 @@
 flask
 sounddevice
 soundfile
-numpy
+# PyTorch 2.2.2 is the newest wheel available for Intel macOS. NumPy 2.x is
+# ABI-incompatible with that build, so keep the last NumPy 1.x release.
+numpy==1.26.4
 kokoro>=0.9.4
 torch
 loguru
-transformers
+# Transformers 5 requires PyTorch >=2.4 and disables the Intel macOS wheel.
+# Kokoro 0.9.4 uses the stable Transformers 4 Albert API.
+transformers==4.57.6
 onnxruntime
 misaki[en]>=0.9.4
 phonemizer-fork==3.3.2
