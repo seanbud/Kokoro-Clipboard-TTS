@@ -1,6 +1,6 @@
 # Kokoro Clipboard TTS v0.7 Roadmap
 
-Status: v0.7.0 release candidate
+Status: v0.7.1 packaging hotfix release candidate
 Baseline release: v0.6.3
 Working release name: **Reader Engine**
 

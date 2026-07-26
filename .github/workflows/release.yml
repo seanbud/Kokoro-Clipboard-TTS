@@ -110,6 +110,28 @@ jobs:
           pip install -r requirements.txt
           python -m spacy download en_core_web_sm
 
+      - name: Verify speech dependency compatibility
+        shell: bash
+        run: |
+          python - <<'PY'
+          from importlib.metadata import version
+
+          import numpy
+          import torch
+          from transformers import AlbertConfig, AlbertModel, is_torch_available
+
+          assert numpy.__version__ == "1.26.4", numpy.__version__
+          assert version("transformers") == "4.57.6", version("transformers")
+          assert is_torch_available(), f"Transformers disabled PyTorch {torch.__version__}"
+          AlbertModel(AlbertConfig())
+          print(
+              "Speech dependencies compatible:",
+              f"numpy={numpy.__version__}",
+              f"torch={torch.__version__}",
+              f"transformers={version('transformers')}",
+          )
+          PY
+
       - name: Build Sidecar with PyInstaller
         shell: bash
         run: |
