@@ -7,6 +7,10 @@ import { load } from "@tauri-apps/plugin-store";
 import { error } from "@tauri-apps/plugin-log";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import icon from "../assets/icon.png";
+import {
+  estimatedStartupProgress,
+  type StartupStage,
+} from "../utils/startupProgress";
 
 export default function Splash() {
   const [status, setStatus] = useState("Initializing...");
@@ -14,6 +18,8 @@ export default function Splash() {
   const [logPath, setLogPath] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [startupStage, setStartupStage] = useState<StartupStage>("starting");
+  const [startupElapsedMs, setStartupElapsedMs] = useState(0);
 
   // Read the version from the packaged app metadata so this always reflects
   // the build the user actually launched.
@@ -30,6 +36,15 @@ export default function Splash() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (startupStage === "ready" || startupStage === "error") return;
+    const startedAt = Date.now() - startupElapsedMs;
+    const timer = window.setInterval(() => {
+      setStartupElapsedMs(Date.now() - startedAt);
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [startupStage]);
 
   // Animated dots for loading states
   useEffect(() => {
@@ -62,6 +77,7 @@ export default function Splash() {
     const onReady = () => {
       if (readyHandled || !active) return;
       readyHandled = true;
+      setStartupStage("ready");
       setStatus("Ready!");
       setTimeout(() => { if (active) handleReady(); }, 1800);
     };
@@ -74,8 +90,16 @@ export default function Splash() {
       if (s === "ready") {
         onReady();
       } else if (s === "starting") {
+        setStartupStage("starting");
         setStatus("Starting TTS Engine");
+      } else if (s === "loading-model") {
+        setStartupStage("loading-model");
+        setStatus("Loading Speech Model");
+      } else if (s === "warming-engine") {
+        setStartupStage("warming-engine");
+        setStatus("Warming Up Voice");
       } else if (s.startsWith("error")) {
+        setStartupStage("error");
         setStatus("Engine Error");
         handleEngineError();
       }
@@ -85,6 +109,7 @@ export default function Splash() {
     invoke("start_sidecar").catch((e) => {
       console.error("[Splash] Failed to start sidecar:", e);
       if (active) {
+        setStartupStage("error");
         setStatus("Engine Error");
         handleEngineError();
       }
@@ -99,6 +124,7 @@ export default function Splash() {
           clearInterval(pollInterval);
           onReady();
         } else if (s === "starting") {
+          setStartupStage("starting");
           setStatus("Starting TTS Engine");
         }
       });
@@ -165,6 +191,7 @@ export default function Splash() {
   };
 
   const isError = status.includes("Error");
+  const startupProgress = estimatedStartupProgress(startupStage, startupElapsedMs);
 
   return (
     <div className="window-wrapper" data-tauri-drag-region>
@@ -225,6 +252,26 @@ export default function Splash() {
           >
             {status}{status.includes("Ready") || isError ? "" : dots}
           </div>
+
+          {!isError && (
+            <div className="mx-auto mt-1.5 w-44" aria-label="TTS engine startup progress">
+              <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={startupProgress}>
+                <div
+                  className={`h-full rounded-full transition-[width] duration-500 ${startupStage === "ready" ? "bg-emerald-400" : "bg-[#8AB4F8]"}`}
+                  style={{ width: `${startupProgress}%` }}
+                />
+              </div>
+              <p className="mt-1.5 min-h-3 text-[9px] leading-3 text-white/25" data-tauri-drag-region>
+                {startupStage === "starting" && startupElapsedMs >= 10_000
+                  ? `Preparing the offline engine · ${Math.floor(startupElapsedMs / 1_000)}s`
+                  : startupStage === "loading-model"
+                    ? "The engine is unpacked; loading its local model."
+                    : startupStage === "warming-engine"
+                      ? "Almost ready."
+                      : ""}
+              </p>
+            </div>
+          )}
 
           {/* Engine Error log info */}
           {isError && logPath && (

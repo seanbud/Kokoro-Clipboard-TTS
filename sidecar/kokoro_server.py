@@ -51,7 +51,6 @@ if sys.platform == "win32" and getattr(sys, "frozen", False):
         _bundle,
         os.path.join(_bundle, "torch", "lib"),          # torch_cpu.dll, c10.dll …
         os.path.join(_bundle, "espeakng_loader"),        # espeak-ng.dll
-        os.path.join(_bundle, "onnxruntime", "capi"),    # onnxruntime.dll
     ]
     for _d in _dll_search:
         if os.path.isdir(_d):
@@ -140,7 +139,14 @@ def get_pipeline():
                     if os.path.isfile(config_path) and os.path.isfile(model_path):
                         print("[Sidecar] Loading bundled model weights.")
                         repo_id = "hexgrad/Kokoro-82M"
-                        model = KModel(repo_id=repo_id, config=config_path, model=model_path)
+                        # KPipeline only calls eval() when it constructs the model
+                        # itself. We pass a preloaded offline model, so explicitly
+                        # disable training-time dropout for stable prosody.
+                        model = KModel(
+                            repo_id=repo_id,
+                            config=config_path,
+                            model=model_path,
+                        ).eval()
                         pipeline = KPipeline(lang_code='a', repo_id=repo_id, model=model)
                     else:
                         print("[Sidecar] Bundled weights not found; downloading from Hugging Face.")

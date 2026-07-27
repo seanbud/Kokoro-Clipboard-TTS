@@ -151,20 +151,14 @@ jobs:
             "${CODESIGN_ARGS[@]}" \
             --add-data "sidecar/model${SEP}model" \
             --add-binary "${SONIC_LIBRARY}${SEP}native" \
-            --collect-all onnxruntime \
             --collect-all kokoro \
             --collect-all misaki \
             --collect-all phonemizer \
             --collect-all language_tags \
             --collect-all espeakng_loader \
-            --collect-all huggingface_hub \
-            --collect-all sounddevice \
-            --collect-all soundfile \
-            --collect-all torch \
-            --collect-all loguru \
-            --collect-all transformers \
-            --collect-all spacy \
             --collect-all en_core_web_sm \
+            --exclude-module onnxruntime \
+            --exclude-module spacy.tests \
             sidecar/kokoro_server.py
           mkdir -p src-tauri/binaries
           if [ "${{ matrix.platform }}" = "windows-latest" ]; then

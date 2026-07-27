@@ -23,6 +23,16 @@ fn parse_tts_event(line: &str) -> Option<TtsEvent> {
     serde_json::from_str(payload).ok()
 }
 
+fn startup_status_for_line(line: &str) -> Option<&'static str> {
+    if line.contains("[Sidecar] Initializing Kokoro Pipeline") {
+        Some("loading-model")
+    } else if line.contains("[Sidecar] Pipeline initialized successfully") {
+        Some("warming-engine")
+    } else {
+        None
+    }
+}
+
 /// Manages the lifecycle of the Kokoro TTS sidecar process.
 ///
 /// The sidecar is a PyInstaller-built Python executable that runs a local
@@ -249,6 +259,8 @@ impl SidecarManager {
                                 }
                             }
                             let _ = handle_for_stdout.emit("tts-event", tts_event);
+                        } else if let Some(startup_status) = startup_status_for_line(&line_str) {
+                            let _ = handle_for_stdout.emit("sidecar-status", startup_status);
                         } else if line_str.contains("Chunk 0") {
                             let _ = handle_for_stdout.emit("tts-speaking", ());
                         } else if line_str.contains("[STATUS] FINISHED") {
@@ -407,7 +419,7 @@ impl Drop for SidecarManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_tts_event, TTS_EVENT_PREFIX};
+    use super::{parse_tts_event, startup_status_for_line, TTS_EVENT_PREFIX};
 
     #[test]
     fn parses_structured_tts_event() {
@@ -430,5 +442,18 @@ mod tests {
         assert!(parse_tts_event("[Sidecar] Generated chunk 0").is_none());
         assert!(parse_tts_event(TTS_EVENT_PREFIX).is_none());
         assert!(parse_tts_event("[TTS_EVENT] {not-json}").is_none());
+    }
+
+    #[test]
+    fn identifies_real_startup_milestones() {
+        assert_eq!(
+            startup_status_for_line("[Sidecar] Initializing Kokoro Pipeline..."),
+            Some("loading-model")
+        );
+        assert_eq!(
+            startup_status_for_line("[Sidecar] Pipeline initialized successfully."),
+            Some("warming-engine")
+        );
+        assert_eq!(startup_status_for_line("ordinary log line"), None);
     }
 }
