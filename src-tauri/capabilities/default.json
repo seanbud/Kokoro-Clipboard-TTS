@@ -21,6 +21,7 @@
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
     "updater:default",
+    "process:allow-restart",
     "store:default",
     "dialog:default",
     "dialog:allow-message",

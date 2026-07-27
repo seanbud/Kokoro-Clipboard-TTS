@@ -284,7 +284,11 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 }
             }
             "check_updates" => {
-                let _ = app.emit("check-for-updates", ());
+                if let Some(win) = app.get_webview_window("settings") {
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                    let _ = win.emit("check-for-updates", ());
+                }
             }
             "tutorial" => {
                 if let Some(win) = app.get_webview_window("tutorial") {
@@ -344,6 +348,7 @@ pub fn run() {
         .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
