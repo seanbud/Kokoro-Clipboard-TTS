@@ -3,6 +3,7 @@ import {
   MAX_SPEECH_SEGMENT_CHARS,
   normalizeCodeForSpeech,
   planTextForTTS,
+  replayPlanFromSegment,
 } from "./speechPlanner";
 
 describe("speech planner", () => {
@@ -163,5 +164,18 @@ describe("speech planner", () => {
 
   it("returns no segments for empty input", () => {
     expect(planTextForTTS(" \n\n ")).toEqual([]);
+  });
+});
+
+describe("sentence replay planning", () => {
+  const plan = planTextForTTS("First sentence. Second sentence. Third sentence.");
+
+  it("restarts at the active sentence and preserves everything after it", () => {
+    expect(replayPlanFromSegment(plan, plan[1].id)).toEqual(plan.slice(1));
+  });
+
+  it("falls back to the full plan when no current sentence is known", () => {
+    expect(replayPlanFromSegment(plan, null)).toBe(plan);
+    expect(replayPlanFromSegment(plan, "stale-segment")).toBe(plan);
   });
 });

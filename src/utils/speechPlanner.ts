@@ -22,6 +22,15 @@ export type SpeechPlannerOptions = {
   skipCodeBlocks?: boolean;
 };
 
+export function replayPlanFromSegment(
+  speechPlan: SpeechSegment[],
+  segmentId: string | null,
+): SpeechSegment[] {
+  if (!segmentId) return speechPlan;
+  const index = speechPlan.findIndex((segment) => segment.id === segmentId);
+  return index >= 0 ? speechPlan.slice(index) : speechPlan;
+}
+
 type SourceLine = {
   text: string;
   start: number;

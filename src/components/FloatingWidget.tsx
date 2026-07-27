@@ -8,7 +8,11 @@ import {
   structuredClipboardText,
   type ClipboardPayload,
 } from "../utils/clipboardStructure";
-import { planTextForTTS, type SpeechSegment } from "../utils/speechPlanner";
+import {
+  planTextForTTS,
+  replayPlanFromSegment,
+  type SpeechSegment,
+} from "../utils/speechPlanner";
 import {
   estimateFirstAudioMs,
   estimatedGenerationProgress,
@@ -59,6 +63,12 @@ const StopIcon = () => (
   </svg>
 );
 
+const ReplayIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v6h6M5.5 15a7 7 0 1 0 1.1-7.8L4 10" />
+  </svg>
+);
+
 const CloseIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4">
     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -80,6 +90,7 @@ export default function FloatingWidget() {
   const [subtleFlashKey, setSubtleFlashKey] = useState(0); // tiny dot pulse (on global copy)
   const [generationElapsedMs, setGenerationElapsedMs] = useState(0);
   const [firstAudioContext, setFirstAudioContext] = useState<FirstAudioContext | null>(null);
+  const [canReplay, setCanReplay] = useState(false);
   const hasEnteredRef = useRef(false);
   const speedIndexRef = useRef(DEFAULT_SPEED_INDEX);
   const storeRef = useRef<Awaited<ReturnType<typeof load>> | null>(null);
@@ -88,6 +99,7 @@ export default function FloatingWidget() {
   const firstAudioContextRef = useRef<FirstAudioContext | null>(null);
   const firstAudioHistoryRef = useRef<FirstAudioSample[]>([]);
   const skipCodeBlocksRef = useRef(false);
+  const replaySegmentIdRef = useRef<string | null>(null);
 
   const speed = SPEED_NOTCHES[speedIndex];
   const lastSpeechPlan = useRef<SpeechSegment[]>([]);
@@ -149,20 +161,24 @@ export default function FloatingWidget() {
 
       if (lifecycle.event === "request_received") {
         requestReceivedAtRef.current = lifecycle.timestampMs;
-      } else if (
-        lifecycle.event === "playback_started"
-        && requestReceivedAtRef.current !== null
-        && firstAudioContextRef.current !== null
-      ) {
-        const durationMs = lifecycle.timestampMs - requestReceivedAtRef.current;
-        const nextHistory = recordFirstAudioSample(
-          firstAudioHistoryRef.current,
-          durationMs,
-          firstAudioContextRef.current,
-        );
-        firstAudioHistoryRef.current = nextHistory;
-        requestReceivedAtRef.current = null;
-        void storeRef.current?.set(FIRST_AUDIO_HISTORY_KEY, nextHistory);
+      } else if (lifecycle.event === "playback_started") {
+        if (typeof lifecycle.data.segmentId === "string") {
+          replaySegmentIdRef.current = lifecycle.data.segmentId;
+        }
+        if (
+          requestReceivedAtRef.current !== null
+          && firstAudioContextRef.current !== null
+        ) {
+          const durationMs = lifecycle.timestampMs - requestReceivedAtRef.current;
+          const nextHistory = recordFirstAudioSample(
+            firstAudioHistoryRef.current,
+            durationMs,
+            firstAudioContextRef.current,
+          );
+          firstAudioHistoryRef.current = nextHistory;
+          requestReceivedAtRef.current = null;
+          void storeRef.current?.set(FIRST_AUDIO_HISTORY_KEY, nextHistory);
+        }
       }
 
       const nextStatus = statusForTtsEvent(lifecycle);
@@ -225,6 +241,7 @@ export default function FloatingWidget() {
           pauseAfterMs,
         }));
       if (synthesisSegments.length === 0) return;
+      replaySegmentIdRef.current = synthesisSegments[0].id;
 
       const requestId = crypto.randomUUID();
       activeRequestIdRef.current = requestId;
@@ -274,6 +291,7 @@ export default function FloatingWidget() {
             skipCodeBlocks: skipCodeBlocksRef.current,
           });
           lastSpeechPlan.current = speechPlan;
+          setCanReplay(speechPlan.some((segment) => Boolean(segment.spokenText)));
 
           // Fixes #11: flash the widget to confirm clipboard text received
           setFlashKey((k) => k + 1);
@@ -352,6 +370,27 @@ export default function FloatingWidget() {
     setIsPlaying(false);
     setStatus("Idle");
   }, []);
+
+  // ── Replay current sentence ──
+  const handleReplay = useCallback(async () => {
+    if (lastSpeechPlan.current.length === 0) return;
+    const replayPlan = replayPlanFromSegment(
+      lastSpeechPlan.current,
+      replaySegmentIdRef.current,
+    );
+    await runTTS(replayPlan);
+  }, [speed]);
+
+  useEffect(() => {
+    const handleReplayShortcut = (event: KeyboardEvent) => {
+      if (event.altKey && event.key === "ArrowLeft") {
+        event.preventDefault();
+        void handleReplay();
+      }
+    };
+    window.addEventListener("keydown", handleReplayShortcut);
+    return () => window.removeEventListener("keydown", handleReplayShortcut);
+  }, [handleReplay]);
 
   // ── Close ──
   const handleClose = useCallback(async () => {
@@ -443,6 +482,23 @@ export default function FloatingWidget() {
           "
         >
           <StopIcon />
+        </button>
+
+        {/* Replay Current Sentence */}
+        <button
+          type="button"
+          onClick={handleReplay}
+          onMouseDown={(e) => e.stopPropagation()}
+          disabled={!canReplay}
+          title={`Replay current sentence (${navigator.platform.includes("Mac") ? "⌥←" : "Alt+←"})`}
+          className="
+            w-7 h-7 rounded-full flex items-center justify-center shrink-0
+            bg-white/5 hover:bg-white/10 disabled:opacity-25 disabled:hover:bg-white/5
+            active:scale-95 transition-smooth
+            text-white/55 cursor-default
+          "
+        >
+          <ReplayIcon />
         </button>
 
         {/* Status Hub */}
