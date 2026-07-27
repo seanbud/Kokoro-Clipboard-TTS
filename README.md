@@ -28,12 +28,14 @@ Reads your clipboard aloud with [**Kokoro-82M**](https://github.com/hexgrad/koko
 | Feature | Description |
 |---|---|
 | **Global Hotkey** | Select text anywhere → press `Win+Shift+Q` on Windows or `Control+Option+R` on macOS → hear it read aloud |
-| **Floating Reader** | A minimal, always-on-top widget appears near your cursor with Play/Pause, Stop, and Speed controls |
-| **Speed Control** | Click or scroll-wheel to cycle: 0.5× → 0.75× → 1× → 1.25× → 1.5× → 1.75× → 2× |
+| **Floating Reader** | A minimal, always-on-top widget appears near your cursor with Play/Pause, Stop, replay-current-sentence, and Speed controls |
+| **Live Speed Control** | Click or scroll to adjust active speech from 0.5×–2.0× without changing pitch; 0.75×–1.5× is the quality-first range |
+| **Speech-Aware Reading** | Preserves headings, paragraphs, lists, and useful line breaks; handles common shorthand, dates, money, links, paths, and code intentionally |
 | **28 Voice Presets** | Choose from Kokoro's full voice library (default: Fenrir) |
+| **Voice Preview** | Audition the selected voice and volume directly in Settings before saving |
 | **System Tray** | Runs headless — choose **Read Clipboard** from the tray/menu-bar menu as an alternative to the hotkey |
-| **Auto-Updater** | Silently checks for updates on launch and offers one-click install |
-| **100% Local** | No cloud APIs. No data leaves your machine. Zero latency. |
+| **Auto-Updater** | Checks the signed release channel and offers download, install, and restart controls in Settings |
+| **100% Local** | No cloud APIs, accounts, or telemetry. Clipboard text and speech stay on your machine |
 
 ---
 
@@ -65,7 +67,7 @@ Please check out our **[Contributing Guide](.agent/CONTRIBUTING.md)** for full d
 
 *The React frontend communicates via Tauri with the Rust backend, which securely manages a headless local Python server running the Kokoro TTS engine.*
 
-The Python sidecar is packaged as a standalone executable during release builds, so users do not need to install Python or set up the AI stack manually. It bundles the Kokoro runtime and its supporting libraries, including `torch`, `onnxruntime`, `phonemizer`, `espeak-ng` data, and the model weights/voices used for offline synthesis. That keeps the app fully local while still shipping the native ML dependencies needed to generate speech.
+The Python sidecar is packaged as a standalone executable during release builds, so users do not need to install Python or set up the AI stack manually. It bundles the Kokoro runtime and its supporting libraries, including `torch`, `phonemizer`, `espeak-ng` data, and the model weights/voices used for offline synthesis. That keeps the app fully local while still shipping the native ML dependencies needed to generate speech.
 
 ---
 
@@ -82,8 +84,8 @@ Kokoro-Clipboard-TTS/
 │   │   ├── SettingsWindow.tsx       # Voice & shortcut config
 │   │   └── Tutorial.tsx             # First-run guide
 │   └── utils/
-│       ├── textCleaner.ts           # Markdown stripper for TTS
-│       └── textCleaner.test.ts      # Vitest suite
+│       ├── speechPlanner.ts         # Structure-aware speech planning
+│       └── speechPlanner.test.ts    # Planner regression suite
 ├── src-tauri/
 │   ├── tauri.conf.json              # Tauri config
 │   ├── Cargo.toml                   # Rust dependencies

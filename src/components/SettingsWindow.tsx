@@ -1,10 +1,22 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import { register, unregister, isRegistered } from "@tauri-apps/plugin-global-shortcut";
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import {
+  eventBelongsToRequest,
+  type TtsLifecycleEvent,
+} from "../utils/ttsEvents";
+import {
+  EMPTY_UPDATE_PROGRESS,
+  updateDownloadProgress,
+  type UpdateDownloadProgress,
+} from "../utils/updateProgress";
 
 // ─── Kokoro voice presets ──────────────────────────────────────────────────
 const VOICE_PRESETS = [
@@ -18,11 +30,33 @@ const VOICE_PRESETS = [
 const DEFAULT_VOICE = "am_fenrir";
 const DEFAULT_SHORTCUT_WIN = "Super+Shift+Q";
 const DEFAULT_SHORTCUT_MAC = "Control+Option+R";
+const VOICE_PREVIEW_TEXT = "Okay, this is how I'll sound while reading for you.";
+
+type VoicePreviewState = "idle" | "preparing" | "playing";
+type UpdaterState = "idle" | "checking" | "current" | "available" | "downloading" | "ready" | "error";
 
 function getPlatformDefault() {
   return navigator.userAgent.includes("Mac")
     ? DEFAULT_SHORTCUT_MAC
     : DEFAULT_SHORTCUT_WIN;
+}
+
+async function applyGlobalShortcut(shortcut: string, enabled: boolean) {
+  const platformDefault = getPlatformDefault();
+  if (await isRegistered(platformDefault)) {
+    await unregister(platformDefault);
+  }
+  if (shortcut !== platformDefault && await isRegistered(shortcut)) {
+    await unregister(shortcut);
+  }
+
+  if (enabled) {
+    await register(shortcut, (event) => {
+      if (event.state === "Pressed") {
+        void emit("shortcut-triggered");
+      }
+    });
+  }
 }
 
 export default function SettingsWindow() {
@@ -33,6 +67,16 @@ export default function SettingsWindow() {
   const [saved, setSaved] = useState(false);
   const [volume, setVolume] = useState(1.0);
   const [skipCodeBlocks, setSkipCodeBlocks] = useState(false);
+  const [voicePreviewState, setVoicePreviewState] = useState<VoicePreviewState>("idle");
+  const [voicePreviewError, setVoicePreviewError] = useState("");
+  const voicePreviewRequestIdRef = useRef<string | null>(null);
+  const [appVersion, setAppVersion] = useState("");
+  const [updaterState, setUpdaterState] = useState<UpdaterState>("idle");
+  const [availableVersion, setAvailableVersion] = useState("");
+  const [updateError, setUpdateError] = useState("");
+  const [downloadProgress, setDownloadProgress] = useState<UpdateDownloadProgress>(EMPTY_UPDATE_PROGRESS);
+  const availableUpdateRef = useRef<Update | null>(null);
+  const updaterBusyRef = useRef(false);
   
   const [devices, setDevices] = useState<{id: number, name: string}[]>([]);
   const [currentDevice, setCurrentDevice] = useState<number>(0);
@@ -42,9 +86,22 @@ export default function SettingsWindow() {
     getCurrentWebviewWindow().startDragging();
   };
 
+  // Keep the preloaded Settings webview alive so tray actions and long-running
+  // update downloads retain their state when the native close button is used.
+  useEffect(() => {
+    const win = getCurrentWebviewWindow();
+    const unlisten = win.onCloseRequested((event) => {
+      event.preventDefault();
+      void win.hide();
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
+
   // ── Load settings ──
   useEffect(() => {
     (async () => {
+      getVersion().then(setAppVersion).catch(() => {});
+
       // 1. Fetch sidecar audio devices
       try {
         const devRes = await invoke<any>("get_audio_devices");
@@ -61,9 +118,16 @@ export default function SettingsWindow() {
       const v = await store.get<string>("voice");
       if (v) setVoice(v);
       const s = await store.get<string>("shortcut");
-      if (s) setShortcut(s);
       const e = await store.get<boolean>("shortcut-enabled");
-      if (e !== null && e !== undefined) setShortcutEnabled(e);
+      const savedShortcut = s || getPlatformDefault();
+      const savedShortcutEnabled = e ?? true;
+      setShortcut(savedShortcut);
+      setShortcutEnabled(savedShortcutEnabled);
+      try {
+        await applyGlobalShortcut(savedShortcut, savedShortcutEnabled);
+      } catch (error) {
+        console.error("Failed to restore shortcut:", error);
+      }
       const vol = await store.get<number>("volume");
       if (typeof vol === 'number') {
         setVolume(vol);
@@ -72,6 +136,138 @@ export default function SettingsWindow() {
       if (typeof skipCode === "boolean") setSkipCodeBlocks(skipCode);
     })();
   }, []);
+
+  // ── Voice preview lifecycle ──
+  useEffect(() => {
+    const unlisten = listen<TtsLifecycleEvent>("tts-event", (event) => {
+      const lifecycle = event.payload;
+      if (!eventBelongsToRequest(lifecycle, voicePreviewRequestIdRef.current)) return;
+
+      if (lifecycle.event === "playback_started") {
+        setVoicePreviewState("playing");
+      } else if (
+        lifecycle.event === "cancelled"
+        || lifecycle.event === "playback_finished"
+      ) {
+        voicePreviewRequestIdRef.current = null;
+        setVoicePreviewState("idle");
+      } else if (lifecycle.event === "error") {
+        const message = typeof lifecycle.data.message === "string"
+          ? lifecycle.data.message
+          : "Voice preview failed";
+        voicePreviewRequestIdRef.current = null;
+        setVoicePreviewError(message);
+        setVoicePreviewState("idle");
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+      const requestId = voicePreviewRequestIdRef.current;
+      voicePreviewRequestIdRef.current = null;
+      if (requestId) void invoke("stop_tts", { requestId }).catch(() => {});
+    };
+  }, []);
+
+  const handleVoicePreview = useCallback(async () => {
+    const activeRequestId = voicePreviewRequestIdRef.current;
+    if (activeRequestId) {
+      voicePreviewRequestIdRef.current = null;
+      setVoicePreviewState("idle");
+      await invoke("stop_tts", { requestId: activeRequestId }).catch(() => {});
+      return;
+    }
+
+    const requestId = crypto.randomUUID();
+    voicePreviewRequestIdRef.current = requestId;
+    setVoicePreviewError("");
+    setVoicePreviewState("preparing");
+
+    try {
+      await invoke("send_to_tts", {
+        text: VOICE_PREVIEW_TEXT,
+        speed: 1.0,
+        voice,
+        volume,
+        requestId,
+        segments: [{
+          id: "voice-preview",
+          kind: "sentence",
+          spokenText: VOICE_PREVIEW_TEXT,
+          pauseAfterMs: 0,
+        }],
+      });
+    } catch (error) {
+      if (voicePreviewRequestIdRef.current !== requestId) return;
+      voicePreviewRequestIdRef.current = null;
+      setVoicePreviewError(String(error));
+      setVoicePreviewState("idle");
+    }
+  }, [voice, volume]);
+
+  // ── Signed application updates ──
+  const handleCheckForUpdates = useCallback(async () => {
+    if (updaterBusyRef.current) return;
+    updaterBusyRef.current = true;
+    setUpdaterState("checking");
+    setUpdateError("");
+
+    try {
+      if (availableUpdateRef.current) {
+        await availableUpdateRef.current.close().catch(() => {});
+        availableUpdateRef.current = null;
+      }
+      const update = await check({ timeout: 20_000 });
+      if (update) {
+        availableUpdateRef.current = update;
+        setAvailableVersion(update.version);
+        setUpdaterState("available");
+      } else {
+        setAvailableVersion("");
+        setUpdaterState("current");
+      }
+    } catch (error) {
+      setUpdateError(String(error));
+      setUpdaterState("error");
+    } finally {
+      updaterBusyRef.current = false;
+    }
+  }, []);
+
+  const handleInstallUpdate = useCallback(async () => {
+    const update = availableUpdateRef.current;
+    if (!update || updaterBusyRef.current) return;
+    updaterBusyRef.current = true;
+    setUpdaterState("downloading");
+    setUpdateError("");
+    setDownloadProgress(EMPTY_UPDATE_PROGRESS);
+
+    try {
+      await update.downloadAndInstall((event) => {
+        setDownloadProgress((current) => updateDownloadProgress(current, event));
+      });
+      availableUpdateRef.current = null;
+      setUpdaterState("ready");
+    } catch (error) {
+      await update.close().catch(() => {});
+      availableUpdateRef.current = null;
+      setUpdateError(String(error));
+      setUpdaterState("error");
+    } finally {
+      updaterBusyRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen("check-for-updates", () => {
+      void handleCheckForUpdates();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+      availableUpdateRef.current?.close().catch(() => {});
+      availableUpdateRef.current = null;
+    };
+  }, [handleCheckForUpdates]);
 
   // ── Save settings ──
   const handleSave = useCallback(async () => {
@@ -84,23 +280,8 @@ export default function SettingsWindow() {
     await store.save();
     await emit("settings-updated", { skipCodeBlocks });
 
-    // Re-register the shortcut
     try {
-      const platformDefault = getPlatformDefault();
-      if (await isRegistered(platformDefault)) {
-        await unregister(platformDefault);
-      }
-      if (await isRegistered(shortcut)) {
-        await unregister(shortcut);
-      }
-
-      if (shortcutEnabled) {
-        await register(shortcut, (event) => {
-          if (event.state === "Pressed") {
-            void emit("shortcut-triggered");
-          }
-        });
-      }
+      await applyGlobalShortcut(shortcut, shortcutEnabled);
     } catch (error) {
       console.error("Failed to register shortcut:", error);
     }
@@ -162,17 +343,34 @@ export default function SettingsWindow() {
           <label className="text-xs font-medium text-white/50 uppercase tracking-wider">
             Voice Preset
           </label>
-          <select
-            value={voice}
-            onChange={(e) => setVoice(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl bg-[#2D2D2D] border border-white/10 text-sm text-white/90 focus:outline-none focus:border-[#8AB4F8]/50 transition-smooth cursor-pointer"
-          >
-            {VOICE_PRESETS.map((v) => (
-              <option key={v} value={v} className="bg-[#2D2D2D]">
-                {v.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-              </option>
-            ))}
-          </select>
+          <div className="flex gap-2">
+            <select
+              value={voice}
+              onChange={(e) => setVoice(e.target.value)}
+              className="min-w-0 flex-1 px-4 py-2.5 rounded-xl bg-[#2D2D2D] border border-white/10 text-sm text-white/90 focus:outline-none focus:border-[#8AB4F8]/50 transition-smooth cursor-pointer"
+            >
+              {VOICE_PRESETS.map((v) => (
+                <option key={v} value={v} className="bg-[#2D2D2D]">
+                  {v.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleVoicePreview}
+              title={voicePreviewState === "idle" ? "Hear this voice" : "Stop voice preview"}
+              className={`min-w-24 px-4 py-2.5 rounded-xl text-xs font-semibold border transition-smooth ${voicePreviewState === "idle" ? "bg-white/5 border-white/10 hover:bg-white/10 text-white/60 hover:text-[#8AB4F8]" : "bg-[#1C2B41] border-[#8AB4F8]/30 text-[#AECBFA] hover:bg-[#233752]"}`}
+            >
+              {voicePreviewState === "preparing"
+                ? "Preparing…"
+                : voicePreviewState === "playing"
+                  ? "Stop"
+                  : "Preview"}
+            </button>
+          </div>
+          <p className={`min-h-4 text-[11px] leading-4 ${voicePreviewError ? "text-red-300/80" : "text-white/30"}`} aria-live="polite">
+            {voicePreviewError || (voicePreviewState === "idle" ? "Uses the selected voice and volume before saving." : "Preview replaces any speech already playing.")}
+          </p>
         </div>
 
         {/* Audio Output Device */}
@@ -288,6 +486,56 @@ export default function SettingsWindow() {
               className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-smooth ${shortcutEnabled ? "left-5.5 bg-[#202124]" : "left-0.5 bg-white/40"}`}
             />
           </button>
+        </div>
+
+        {/* Application updates */}
+        <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm text-white/70">Application Updates</div>
+              <p className="mt-1 text-[11px] leading-relaxed text-white/35" aria-live="polite">
+                {updaterState === "checking" && "Checking GitHub Releases…"}
+                {updaterState === "current" && `You're up to date${appVersion ? ` on v${appVersion}` : ""}.`}
+                {updaterState === "available" && `Version ${availableVersion} is ready to download.`}
+                {updaterState === "downloading" && (downloadProgress.percent !== null
+                  ? `Downloading version ${availableVersion} — ${downloadProgress.percent}%`
+                  : `Downloading version ${availableVersion}…`)}
+                {updaterState === "ready" && `Version ${availableVersion} is installed. Restart to finish.`}
+                {updaterState === "error" && (updateError || "The update check failed. Please try again.")}
+                {updaterState === "idle" && `Installed version${appVersion ? `: v${appVersion}` : ""}.`}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={updaterState === "checking" || updaterState === "downloading"}
+              onClick={() => {
+                if (updaterState === "available") void handleInstallUpdate();
+                else if (updaterState === "ready") void relaunch();
+                else void handleCheckForUpdates();
+              }}
+              className="shrink-0 min-w-24 px-4 py-2 rounded-xl text-xs font-semibold bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-40 disabled:cursor-wait transition-smooth text-white/60 hover:text-[#8AB4F8]"
+            >
+              {updaterState === "checking"
+                ? "Checking…"
+                : updaterState === "available"
+                  ? "Install"
+                  : updaterState === "downloading"
+                    ? "Installing…"
+                    : updaterState === "ready"
+                      ? "Restart"
+                      : updaterState === "error"
+                        ? "Retry"
+                        : "Check"}
+            </button>
+          </div>
+          {updaterState === "downloading" && (
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/5" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={downloadProgress.percent ?? undefined}>
+              <div
+                className={`h-full rounded-full bg-[#8AB4F8] transition-[width] duration-300 ${downloadProgress.percent === null ? "w-1/3 animate-pulse" : ""}`}
+                style={downloadProgress.percent === null ? undefined : { width: `${downloadProgress.percent}%` }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Save */}

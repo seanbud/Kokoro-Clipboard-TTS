@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "kokoro-clipboard-tts",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "identifier": "com.kokoro.clipboard-tts",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -93,7 +93,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "YOUR_UPDATER_PUBLIC_KEY_HERE",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQyMjM2Mjg4ODBFMkQ2OEIKUldTTDF1S0FpR0lqUWtTUzE5T0prOTkxK1hVS2kwUzB5aXVodzJCaWxPeDYwR21za2xOekc2Z3UK",
       "endpoints": [
         "https://github.com/seanbud/Kokoro-Clipboard-TTS/releases/latest/download/latest.json"
       ]

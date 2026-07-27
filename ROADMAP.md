@@ -1,15 +1,15 @@
-# Kokoro Clipboard TTS v0.7 Roadmap
+# Kokoro Clipboard TTS v0.8 Roadmap
 
-Status: v0.7.1 packaging hotfix release candidate
-Baseline release: v0.6.3
-Working release name: **Reader Engine**
+Status: v0.8.0 release candidate
+Baseline release: v0.7.1
+Working release name: **Speech Intelligence**
 
 ## Release train
 
-- **v0.7.0 — Reader Engine:** ship the locally validated session controller, exact pause/resume, live pitch-preserved speed, structural clipboard/planner foundation, code-block setting, startup prewarm, and first-audio feedback. Pocket TTS and GPU selection are not included.
-- **v0.8.x — Speech Intelligence:** numbers, dates, URLs, paths, pronunciation dictionary, pause tuning, sentence navigation, and reader profiles.
-- **v0.9.x — Engine Lab:** optional Pocket TTS engine packs, evidence-based GPU/backend selection, package slimming, and broader platform bake-offs.
-- **v1.0 — Stable Reader:** accessibility and upgrade hardening, full supported-platform release matrix, long-session soak evidence, and a frozen public behavior contract.
+- **v0.7.x — Reader Engine:** shipped the session controller, exact pause/resume, live pitch-preserved speed, structural clipboard planning, startup prewarm, and first-audio feedback.
+- **v0.8.x — Speech Intelligence:** ship deliberate handling for numbers and technical text, retained-line-break pauses, replay-current-sentence, voice preview, model consistency, startup diagnostics, and signed updater bootstrap.
+- **v1.0 — Stable Reader:** next mainline target. Focus on accessibility, update verification, full supported-platform release evidence, crash recovery, and long-session soak testing.
+- **Post-1.0 Engine Lab:** optional model/backend experiments remain evidence-gated and do not block v1.0. Kokoro stays the offline default unless another engine delivers a material listening-quality win without unacceptable package or platform costs.
 
 ## Progress ledger
 
@@ -20,30 +20,34 @@ Working release name: **Reader Engine**
 - W0.5 fake audio integration harness: the production queue player runs against fake streams with exact offset, multi-chunk ordering, failed-write, cancellation, 50-thread replacement-race, and 500-chunk bounded-queue coverage; real-time 30-minute soak remains a release gate.
 - W1.0 clipboard structure recovery: a native command reads both plain text and HTML where the source app provides them; matching HTML is converted to local structural hints, mismatches fall back to plain text, and high-confidence plain heading inference is fixture-locked. Cross-app manual verification remains.
 - W1.1–W1.2 structural planner: headings, paragraphs, lists, quotes, code source mapping, bounded sentence/clause segmentation, and segment-specific pauses implemented locally.
-- W1.3 normalization rules: conservative spoken forms for Okay/idk/lol/TBH/imo and stronger informal ellipsis pauses are fixture-locked; numbers, technical text, and user overrides remain pending.
+- W1.3 normalization rules: conversational shorthand, common uppercase initialisms, informal ellipsis pauses, and word-collision counterexamples are fixture-locked.
+- W1.4 number/technical normalization: currency, percentages, ISO dates, clock times, versions, speed multipliers, URLs, email addresses, paths, and inline code have approved spoken-form fixtures; locale selection, long digit policy, and user overrides remain.
 - W1.5 code behavior: code blocks are always announced, read with identifier/operator normalization by default, and announced as skipped only when the stored setting is enabled; broader code fixtures remain pending.
 - W2.1/W2.8 session controller: per-request cancellation, pause state, chunk/sample position, serialized inference, cancellation-aware queue backpressure, stale-control rejection, and deterministic replacement-race tests implemented locally; live overlap test pending.
 - W2.2 persistent queue player: production playback state machine extracted behind a sounddevice-independent stream contract and covered by integration tests; packaged-device testing pending.
 - W2.3 exact pause/resume: sample-offset retention implemented locally; live and packaged-app acceptance measurements pending.
+- W2.4 sentence navigation: compact replay-current-sentence control and Option/Alt+Left shortcut implemented; forward skip is intentionally omitted.
 - W2.6–W2.7 runtime speed: Apache-2.0 Sonic is vendored behind a small streaming C ABI, applies speed changes between 20 ms source blocks, and is wired through UI, Tauri, session state, playback, local build, and release packaging. Native and signed frozen macOS arm64 startup tests pass; Windows, macOS x64, command-to-audible measurement, and human listening gates remain.
 - W3.1–W3.2 latency path: default engine prewarms before health/ready, the fixed 100 ms request delay is removed, and the 250 ms first-buffer silence is replaced by concurrent output-stream warmup; live clipping check pending.
 - W3.4–W3.6 first-audio feedback: rolling local median keyed by backend, voice, and first-segment-size bucket; low-confidence indeterminate state; conservative 90%-capped bar; and half-second remaining-time label implemented. Playback-remaining estimate is pending.
+- W3.7 compact packaging: unused ONNX/test modules were removed from the frozen build, producing an approximately 503 MB Apple Silicon candidate. A roughly 1 GB pre-extracted runtime improved repeat startup but was rejected as a poor product tradeoff; the compact offline build remains the release path.
+- W6 update/recovery: signed updater metadata, download progress, install/restart controls, startup milestones, saved-shortcut restoration, and version display are implemented. v0.8.0 bootstraps the signing channel; v0.8.1 must prove an installed update from v0.8.0.
 - W4.2 backend benchmark: corpus-driven PyTorch CPU/MPS runner and initial M2 reference suite implemented; Windows/CUDA and frozen-package measurements pending.
 - W5.3 Pocket TTS benchmark: isolated v2.1.0 CPU streaming runner and initial M2 unquantized/quantized measurements implemented; blind quality and frozen-package work pending.
 - Remaining W1–W6 work: active, sequenced below; engine promotion remains evidence-gated.
 
 ## Release outcome
 
-v0.7 should make reading feel immediate, controllable, and deliberately spoken rather than merely converting a flattened clipboard string into audio.
+v0.8 should make reading feel deliberate and dependable without increasing the installed footprint or replacing the proven Kokoro default.
 
 The release is successful when it:
 
-1. pauses and resumes at the actual playback position;
-2. applies speed changes predictably without replaying text or changing pitch;
-3. preserves useful document structure and handles common shorthand, numbers, and code intentionally;
-4. starts audible playback materially faster and reports honest progress while waiting;
-5. includes a measured experimental acceleration/model path without weakening the stable offline default; and
-6. adds sentence navigation and remaining-time feedback so users can control longer readings.
+1. preserves useful document structure and handles common shorthand, numbers, links, paths, and code intentionally;
+2. adds a compact replay-current-sentence action without a forward-skip button;
+3. previews voices before saving and restores customized shortcuts on restart;
+4. reports honest cold-start and first-audio progress while retaining the compact offline package;
+5. eliminates training-mode variability in Kokoro inference; and
+6. bootstraps signed cross-platform updates for verification in the first v0.8 patch release.
 
 This roadmap separates model inference, speech planning, and audio playback. That separation is required: changing models alone cannot recover formatting that the app discarded or fix playback state that the app never tracked.
 
@@ -68,7 +72,7 @@ Confirmed with the product owner on 2026-07-25. Primary-content weighting and fi
 | Code blocks | Always announce code blocks; read them intelligently by default; skip only when the user enables the setting | Requires a stored setting plus concise identifier/operator normalization |
 | Informal shorthand | `idk`, `lol`, `TBH`, and `imo` are pronounced as initialisms for now; later user dictionary rules override built-ins | Changes default lexicon fixtures only |
 | Experimental models | Pocket TTS may be offered as an opt-in on-device engine; Kokoro remains the installed fallback until quality and packaging gates pass | Requires in-app lifecycle/download UX and engine-specific voices/settings |
-| Release numbering | Ship this work as v0.7.0, not v1.0 | A v1.0 designation would require a broader stability/support commitment |
+| Release numbering | Ship Speech Intelligence as v0.8.0, then target v1.0 hardening directly | A mandatory v0.9 engine release would delay stability work without a demonstrated user benefit |
 
 ## v0.6.3 baseline evidence
 

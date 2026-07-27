@@ -57,20 +57,14 @@ def run():
         venv_pyinstaller,
         "--onefile",
         "--name", "kokoro",
-        "--collect-all", "onnxruntime",
         "--collect-all", "kokoro",
         "--collect-all", "misaki",
         "--collect-all", "phonemizer",
         "--collect-all", "language_tags",
         "--collect-all", "espeakng_loader",
-        "--collect-all", "huggingface_hub",
-        "--collect-all", "sounddevice",
-        "--collect-all", "soundfile",
-        "--collect-all", "torch",
-        "--collect-all", "loguru",
-        "--collect-all", "transformers",
-        "--collect-all", "spacy",
         "--collect-all", "en_core_web_sm",
+        "--exclude-module", "onnxruntime",
+        "--exclude-module", "spacy.tests",
     ]
     if os.name == 'nt':
         sonic_library = os.path.join("sidecar", "native", "sonic_kctts.dll")

@@ -10,12 +10,14 @@ try:
     from .tts_protocol import encode_tts_event, normalize_synthesis_segments
     from .audio_playback import AudioChunk, play_queued_audio
     from .playback_session import PlaybackSessionController
+    from .pipeline_loader import create_offline_pipeline
     from .sonic_speed import SonicSpeedProcessor
 except ImportError:
     # Script/PyInstaller execution places the sidecar directory on sys.path.
     from tts_protocol import encode_tts_event, normalize_synthesis_segments
     from audio_playback import AudioChunk, play_queued_audio
     from playback_session import PlaybackSessionController
+    from pipeline_loader import create_offline_pipeline
     from sonic_speed import SonicSpeedProcessor
 
 # Make stdout write-through (unbuffered) so every write is flushed to disk
@@ -51,7 +53,6 @@ if sys.platform == "win32" and getattr(sys, "frozen", False):
         _bundle,
         os.path.join(_bundle, "torch", "lib"),          # torch_cpu.dll, c10.dll …
         os.path.join(_bundle, "espeakng_loader"),        # espeak-ng.dll
-        os.path.join(_bundle, "onnxruntime", "capi"),    # onnxruntime.dll
     ]
     for _d in _dll_search:
         if os.path.isdir(_d):
@@ -140,8 +141,13 @@ def get_pipeline():
                     if os.path.isfile(config_path) and os.path.isfile(model_path):
                         print("[Sidecar] Loading bundled model weights.")
                         repo_id = "hexgrad/Kokoro-82M"
-                        model = KModel(repo_id=repo_id, config=config_path, model=model_path)
-                        pipeline = KPipeline(lang_code='a', repo_id=repo_id, model=model)
+                        pipeline = create_offline_pipeline(
+                            KModel,
+                            KPipeline,
+                            repo_id=repo_id,
+                            config_path=config_path,
+                            model_path=model_path,
+                        )
                     else:
                         print("[Sidecar] Bundled weights not found; downloading from Hugging Face.")
                         pipeline = KPipeline(lang_code='a')

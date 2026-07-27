@@ -1,6 +1,6 @@
 [package]
 name = "kokoro-clipboard-tts"
-version = "0.7.1"
+version = "0.8.0"
 description = "Clipboard TTS powered by Kokoro-82M"
 authors = ["you"]
 edition = "2021"
@@ -28,3 +28,4 @@ reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 tauri-plugin-log = "2.8.0"
 arboard = { version = "3.6.1", default-features = false }
+tauri-plugin-process = "2"

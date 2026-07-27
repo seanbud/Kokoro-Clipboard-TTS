@@ -22,6 +22,15 @@ export type SpeechPlannerOptions = {
   skipCodeBlocks?: boolean;
 };
 
+export function replayPlanFromSegment(
+  speechPlan: SpeechSegment[],
+  segmentId: string | null,
+): SpeechSegment[] {
+  if (!segmentId) return speechPlan;
+  const index = speechPlan.findIndex((segment) => segment.id === segmentId);
+  return index >= 0 ? speechPlan.slice(index) : speechPlan;
+}
+
 type SourceLine = {
   text: string;
   start: number;
@@ -48,11 +57,50 @@ const FINAL_PAUSE_MS: Record<SpeechBlock["kind"], number> = {
 };
 
 const SPOKEN_SHORTHAND: Record<string, string> = {
+  afaik: "A F A I K",
+  asap: "A S A P",
+  brb: "B R B",
+  btw: "B T W",
+  fyi: "F Y I",
   idk: "I D K",
+  iirc: "I I R C",
   imo: "I M O",
+  irl: "I R L",
   lol: "L O L",
+  omg: "O M G",
   tbh: "T B H",
 };
+
+const PROSE_INITIALISMS: Record<string, string> = {
+  AI: "A I",
+  API: "A P I",
+  CPU: "C P U",
+  GPU: "G P U",
+  HTML: "H T M L",
+  HTTP: "H T T P",
+  HTTPS: "H T T P S",
+  JSON: "J son",
+  PDF: "P D F",
+  TTS: "T T S",
+  UI: "U I",
+  URL: "U R L",
+  US: "U S",
+};
+
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 
 function sourceLines(input: string): SourceLine[] {
   const lines: SourceLine[] = [];
@@ -301,16 +349,94 @@ function boundRange(
   return ranges;
 }
 
+function speakDecimal(value: string): string {
+  const [whole, fraction] = value.replace(/,/g, "").split(".");
+  return fraction === undefined ? whole : `${whole} point ${fraction.split("").join(" ")}`;
+}
+
+function speakCurrency(dollars: string, cents?: string): string {
+  const amount = dollars.replace(/,/g, "");
+  const dollarUnit = amount === "1" ? "dollar" : "dollars";
+  if (!cents || Number(cents) === 0) return `${amount} ${dollarUnit}`;
+  const normalizedCents = cents.padEnd(2, "0").slice(0, 2);
+  const centUnit = normalizedCents === "01" ? "cent" : "cents";
+  return `${amount} ${dollarUnit} and ${Number(normalizedCents)} ${centUnit}`;
+}
+
+function speakTime(
+  match: string,
+  hour: string,
+  minutes: string,
+  period: string,
+  offset: number,
+  source: string,
+): string {
+  const spokenMinutes = minutes.startsWith("0") ? `oh ${Number(minutes)}` : Number(minutes);
+  const sentencePeriod = match.endsWith(".") && offset + match.length === source.length ? "." : "";
+  return `${Number(hour)} ${spokenMinutes} ${period.toUpperCase()} M${sentencePeriod}`;
+}
+
+function speakUrl(value: string): string {
+  return value
+    .replace(/^https?:\/\/(?:www\.)?/i, "")
+    .replace(/[?#].*$/, "")
+    .replace(/\./g, " dot ")
+    .replace(/\//g, " slash ")
+    .replace(/[-_]+/g, " ");
+}
+
+function speakEmail(value: string): string {
+  return value
+    .replace("@", " at ")
+    .replace(/\./g, " dot ")
+    .replace(/[_-]+/g, " ");
+}
+
+function speakPath(value: string): string {
+  return `path ${value
+    .replace(/^\/+/, "")
+    .replace(/\.([A-Za-z]{1,5})\b/g, (_match, extension: string) => (
+      ` dot ${extension.toUpperCase().split("").join(" ")}`
+    ))
+    .replace(/\//g, " slash ")
+    .replace(/[_-]+/g, " ")}`;
+}
+
 function normalizeInlineMarkup(text: string): string {
   return text
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/`([^`]*)`/g, "$1")
+    .replace(/`([^`]*)`/g, (_match, code: string) => normalizeCodeForSpeech(code))
     .replace(/(\*{1,3}|_{1,3})(.*?)\1/g, "$2")
     .replace(/~~(.*?)~~/g, "$1")
     .replace(/<[^>]*>/g, "")
+    .replace(/\bhttps?:\/\/[^\s<>()]*[A-Za-z0-9/#]/gi, speakUrl)
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, speakEmail)
+    .replace(/\/(?:Users|home|var|tmp|etc)\/[A-Za-z0-9._~/-]*[A-Za-z0-9_~-]/g, speakPath)
+    .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (_match, year: string, month: string, day: string) => {
+      const monthName = MONTH_NAMES[Number(month) - 1];
+      return monthName ? `${monthName} ${Number(day)}, ${year}` : _match;
+    })
+    .replace(/\b(\d{1,2}):(\d{2})\s*([ap])\.?m\.?(?=[\s,;:!?)]|$)/gi, speakTime)
+    .replace(/\$(\d[\d,]*)(?:\.(\d{1,2}))?/g, (_match, dollars: string, cents?: string) => (
+      speakCurrency(dollars, cents)
+    ))
+    .replace(/\bv(\d+(?:\.\d+){1,3})\b/gi, (_match, version: string) => (
+      `version ${version.split(".").join(" point ")}`
+    ))
+    .replace(/\b(\d+\.\d+)x\b/gi, (_match, multiplier: string) => (
+      `${speakDecimal(multiplier)} times`
+    ))
+    .replace(/\b(\d+(?:\.\d+)?)%/g, (_match, percentage: string) => (
+      `${speakDecimal(percentage)} percent`
+    ))
     .replace(/\bok\b/gi, "Okay")
-    .replace(/\b(?:idk|imo|lol|tbh)\b/gi, (match) => SPOKEN_SHORTHAND[match.toLowerCase()])
+    .replace(/\b(?:afaik|asap|brb|btw|fyi|idk|iirc|imo|irl|lol|omg|tbh)\b/gi, (match) => (
+      SPOKEN_SHORTHAND[match.toLowerCase()]
+    ))
+    .replace(/\b(?:AI|API|CPU|GPU|HTML|HTTPS?|JSON|PDF|TTS|UI|URL|US)\b/g, (match) => (
+      PROSE_INITIALISMS[match]
+    ))
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -455,15 +581,30 @@ function segmentsForBlock(
     const sourceStart = mapped.sourcePositions[start];
     const sourceEnd = mapped.sourcePositions[end - 1] + 1;
     const isLast = index === ranges.length - 1;
-    return [{
-      id: `segment-${firstId + index}`,
-      sourceText: input.slice(sourceStart, sourceEnd),
-      spokenText,
-      kind: ranges.length > 1 && !isLast ? "sentence" : block.kind,
-      pauseAfterMs: isLast ? FINAL_PAUSE_MS[block.kind] : internalPauseMs(spokenText),
-      sourceStart,
-      sourceEnd,
-    } satisfies SpeechSegment];
+    const nextSourceStart = isLast
+      ? sourceEnd
+      : mapped.sourcePositions[ranges[index + 1][0]];
+    const retainedLineBreak = /[\r\n]/.test(input.slice(sourceEnd, nextSourceStart));
+    const spokenRanges = boundRange(spokenText, 0, spokenText.length, MAX_SPEECH_SEGMENT_CHARS);
+    return spokenRanges.map(([spokenStart, spokenEnd], spokenIndex) => {
+      const finishesSourceRange = spokenIndex === spokenRanges.length - 1;
+      const finishesBlock = isLast && finishesSourceRange;
+      return {
+        id: `segment-${firstId + index + spokenIndex}`,
+        sourceText: input.slice(sourceStart, sourceEnd),
+        spokenText: spokenText.slice(spokenStart, spokenEnd),
+        kind: finishesBlock ? block.kind : "sentence",
+        pauseAfterMs: !finishesSourceRange
+          ? 80
+          : isLast
+            ? FINAL_PAUSE_MS[block.kind]
+            : retainedLineBreak
+              ? Math.max(260, internalPauseMs(spokenText))
+              : internalPauseMs(spokenText),
+        sourceStart,
+        sourceEnd,
+      } satisfies SpeechSegment;
+    });
   });
 }
 
