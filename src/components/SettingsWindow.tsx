@@ -1,10 +1,14 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import { register, unregister, isRegistered } from "@tauri-apps/plugin-global-shortcut";
 import { invoke } from "@tauri-apps/api/core";
-import { emit } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
+import {
+  eventBelongsToRequest,
+  type TtsLifecycleEvent,
+} from "../utils/ttsEvents";
 
 // ─── Kokoro voice presets ──────────────────────────────────────────────────
 const VOICE_PRESETS = [
@@ -18,6 +22,9 @@ const VOICE_PRESETS = [
 const DEFAULT_VOICE = "am_fenrir";
 const DEFAULT_SHORTCUT_WIN = "Super+Shift+Q";
 const DEFAULT_SHORTCUT_MAC = "Control+Option+R";
+const VOICE_PREVIEW_TEXT = "Okay, this is how I'll sound while reading for you.";
+
+type VoicePreviewState = "idle" | "preparing" | "playing";
 
 function getPlatformDefault() {
   return navigator.userAgent.includes("Mac")
@@ -33,6 +40,9 @@ export default function SettingsWindow() {
   const [saved, setSaved] = useState(false);
   const [volume, setVolume] = useState(1.0);
   const [skipCodeBlocks, setSkipCodeBlocks] = useState(false);
+  const [voicePreviewState, setVoicePreviewState] = useState<VoicePreviewState>("idle");
+  const [voicePreviewError, setVoicePreviewError] = useState("");
+  const voicePreviewRequestIdRef = useRef<string | null>(null);
   
   const [devices, setDevices] = useState<{id: number, name: string}[]>([]);
   const [currentDevice, setCurrentDevice] = useState<number>(0);
@@ -72,6 +82,74 @@ export default function SettingsWindow() {
       if (typeof skipCode === "boolean") setSkipCodeBlocks(skipCode);
     })();
   }, []);
+
+  // ── Voice preview lifecycle ──
+  useEffect(() => {
+    const unlisten = listen<TtsLifecycleEvent>("tts-event", (event) => {
+      const lifecycle = event.payload;
+      if (!eventBelongsToRequest(lifecycle, voicePreviewRequestIdRef.current)) return;
+
+      if (lifecycle.event === "playback_started") {
+        setVoicePreviewState("playing");
+      } else if (
+        lifecycle.event === "cancelled"
+        || lifecycle.event === "playback_finished"
+      ) {
+        voicePreviewRequestIdRef.current = null;
+        setVoicePreviewState("idle");
+      } else if (lifecycle.event === "error") {
+        const message = typeof lifecycle.data.message === "string"
+          ? lifecycle.data.message
+          : "Voice preview failed";
+        voicePreviewRequestIdRef.current = null;
+        setVoicePreviewError(message);
+        setVoicePreviewState("idle");
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+      const requestId = voicePreviewRequestIdRef.current;
+      voicePreviewRequestIdRef.current = null;
+      if (requestId) void invoke("stop_tts", { requestId }).catch(() => {});
+    };
+  }, []);
+
+  const handleVoicePreview = useCallback(async () => {
+    const activeRequestId = voicePreviewRequestIdRef.current;
+    if (activeRequestId) {
+      voicePreviewRequestIdRef.current = null;
+      setVoicePreviewState("idle");
+      await invoke("stop_tts", { requestId: activeRequestId }).catch(() => {});
+      return;
+    }
+
+    const requestId = crypto.randomUUID();
+    voicePreviewRequestIdRef.current = requestId;
+    setVoicePreviewError("");
+    setVoicePreviewState("preparing");
+
+    try {
+      await invoke("send_to_tts", {
+        text: VOICE_PREVIEW_TEXT,
+        speed: 1.0,
+        voice,
+        volume,
+        requestId,
+        segments: [{
+          id: "voice-preview",
+          kind: "sentence",
+          spokenText: VOICE_PREVIEW_TEXT,
+          pauseAfterMs: 0,
+        }],
+      });
+    } catch (error) {
+      if (voicePreviewRequestIdRef.current !== requestId) return;
+      voicePreviewRequestIdRef.current = null;
+      setVoicePreviewError(String(error));
+      setVoicePreviewState("idle");
+    }
+  }, [voice, volume]);
 
   // ── Save settings ──
   const handleSave = useCallback(async () => {
@@ -162,17 +240,34 @@ export default function SettingsWindow() {
           <label className="text-xs font-medium text-white/50 uppercase tracking-wider">
             Voice Preset
           </label>
-          <select
-            value={voice}
-            onChange={(e) => setVoice(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl bg-[#2D2D2D] border border-white/10 text-sm text-white/90 focus:outline-none focus:border-[#8AB4F8]/50 transition-smooth cursor-pointer"
-          >
-            {VOICE_PRESETS.map((v) => (
-              <option key={v} value={v} className="bg-[#2D2D2D]">
-                {v.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-              </option>
-            ))}
-          </select>
+          <div className="flex gap-2">
+            <select
+              value={voice}
+              onChange={(e) => setVoice(e.target.value)}
+              className="min-w-0 flex-1 px-4 py-2.5 rounded-xl bg-[#2D2D2D] border border-white/10 text-sm text-white/90 focus:outline-none focus:border-[#8AB4F8]/50 transition-smooth cursor-pointer"
+            >
+              {VOICE_PRESETS.map((v) => (
+                <option key={v} value={v} className="bg-[#2D2D2D]">
+                  {v.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleVoicePreview}
+              title={voicePreviewState === "idle" ? "Hear this voice" : "Stop voice preview"}
+              className={`min-w-24 px-4 py-2.5 rounded-xl text-xs font-semibold border transition-smooth ${voicePreviewState === "idle" ? "bg-white/5 border-white/10 hover:bg-white/10 text-white/60 hover:text-[#8AB4F8]" : "bg-[#1C2B41] border-[#8AB4F8]/30 text-[#AECBFA] hover:bg-[#233752]"}`}
+            >
+              {voicePreviewState === "preparing"
+                ? "Preparing…"
+                : voicePreviewState === "playing"
+                  ? "Stop"
+                  : "Preview"}
+            </button>
+          </div>
+          <p className={`min-h-4 text-[11px] leading-4 ${voicePreviewError ? "text-red-300/80" : "text-white/30"}`} aria-live="polite">
+            {voicePreviewError || (voicePreviewState === "idle" ? "Uses the selected voice and volume before saving." : "Preview replaces any speech already playing.")}
+          </p>
         </div>
 
         {/* Audio Output Device */}
