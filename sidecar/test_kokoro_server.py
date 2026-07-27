@@ -1,10 +1,9 @@
 import unittest
-from unittest.mock import patch
 
 try:
-    from . import kokoro_server
+    from .pipeline_loader import create_offline_pipeline
 except ImportError:
-    import kokoro_server
+    from pipeline_loader import create_offline_pipeline
 
 
 class FakeModel:
@@ -17,9 +16,6 @@ class FakeModel:
 
 
 class PipelineInitializationTests(unittest.TestCase):
-    def tearDown(self):
-        kokoro_server.pipeline = None
-
     def test_preloaded_offline_model_uses_evaluation_mode(self):
         created = {}
 
@@ -27,12 +23,13 @@ class PipelineInitializationTests(unittest.TestCase):
             created["model"] = model
             return object()
 
-        kokoro_server.pipeline = None
-        with (
-            patch.object(kokoro_server, "KModel", FakeModel),
-            patch.object(kokoro_server, "KPipeline", side_effect=fake_pipeline),
-        ):
-            kokoro_server.get_pipeline()
+        create_offline_pipeline(
+            FakeModel,
+            fake_pipeline,
+            repo_id="hexgrad/Kokoro-82M",
+            config_path="config.json",
+            model_path="kokoro-v1_0.pth",
+        )
 
         self.assertFalse(created["model"].training)
 

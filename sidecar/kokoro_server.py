@@ -10,12 +10,14 @@ try:
     from .tts_protocol import encode_tts_event, normalize_synthesis_segments
     from .audio_playback import AudioChunk, play_queued_audio
     from .playback_session import PlaybackSessionController
+    from .pipeline_loader import create_offline_pipeline
     from .sonic_speed import SonicSpeedProcessor
 except ImportError:
     # Script/PyInstaller execution places the sidecar directory on sys.path.
     from tts_protocol import encode_tts_event, normalize_synthesis_segments
     from audio_playback import AudioChunk, play_queued_audio
     from playback_session import PlaybackSessionController
+    from pipeline_loader import create_offline_pipeline
     from sonic_speed import SonicSpeedProcessor
 
 # Make stdout write-through (unbuffered) so every write is flushed to disk
@@ -139,15 +141,13 @@ def get_pipeline():
                     if os.path.isfile(config_path) and os.path.isfile(model_path):
                         print("[Sidecar] Loading bundled model weights.")
                         repo_id = "hexgrad/Kokoro-82M"
-                        # KPipeline only calls eval() when it constructs the model
-                        # itself. We pass a preloaded offline model, so explicitly
-                        # disable training-time dropout for stable prosody.
-                        model = KModel(
+                        pipeline = create_offline_pipeline(
+                            KModel,
+                            KPipeline,
                             repo_id=repo_id,
-                            config=config_path,
-                            model=model_path,
-                        ).eval()
-                        pipeline = KPipeline(lang_code='a', repo_id=repo_id, model=model)
+                            config_path=config_path,
+                            model_path=model_path,
+                        )
                     else:
                         print("[Sidecar] Bundled weights not found; downloading from Hugging Face.")
                         pipeline = KPipeline(lang_code='a')
