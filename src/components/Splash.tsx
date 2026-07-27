@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow, getAllWebviewWindows } from "@tauri-apps/api/webviewWindow";
@@ -12,6 +13,23 @@ export default function Splash() {
   const [dots, setDots] = useState("");
   const [logPath, setLogPath] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+
+  // Read the version from the packaged app metadata so this always reflects
+  // the build the user actually launched.
+  useEffect(() => {
+    let active = true;
+    getVersion()
+      .then((version) => {
+        if (active) setAppVersion(version);
+      })
+      .catch(() => {
+        // Version text is helpful but must never block engine startup.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Animated dots for loading states
   useEffect(() => {
@@ -191,6 +209,12 @@ export default function Splash() {
           <h1 className="text-2xl font-bold text-white mb-2 tracking-tight" data-tauri-drag-region>
             Kokoro TTS
           </h1>
+          <p
+            className="min-h-[0.875rem] mb-2 text-[10px] font-semibold tracking-[0.16em] text-white/25"
+            data-tauri-drag-region
+          >
+            {appVersion ? `v${appVersion}` : ""}
+          </p>
           <div 
             key={status}
             className={`
