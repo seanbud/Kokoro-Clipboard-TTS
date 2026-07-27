@@ -41,6 +41,24 @@ function getPlatformDefault() {
     : DEFAULT_SHORTCUT_WIN;
 }
 
+async function applyGlobalShortcut(shortcut: string, enabled: boolean) {
+  const platformDefault = getPlatformDefault();
+  if (await isRegistered(platformDefault)) {
+    await unregister(platformDefault);
+  }
+  if (shortcut !== platformDefault && await isRegistered(shortcut)) {
+    await unregister(shortcut);
+  }
+
+  if (enabled) {
+    await register(shortcut, (event) => {
+      if (event.state === "Pressed") {
+        void emit("shortcut-triggered");
+      }
+    });
+  }
+}
+
 export default function SettingsWindow() {
   const [voice, setVoice] = useState(DEFAULT_VOICE);
   const [shortcut, setShortcut] = useState(getPlatformDefault());
@@ -100,9 +118,16 @@ export default function SettingsWindow() {
       const v = await store.get<string>("voice");
       if (v) setVoice(v);
       const s = await store.get<string>("shortcut");
-      if (s) setShortcut(s);
       const e = await store.get<boolean>("shortcut-enabled");
-      if (e !== null && e !== undefined) setShortcutEnabled(e);
+      const savedShortcut = s || getPlatformDefault();
+      const savedShortcutEnabled = e ?? true;
+      setShortcut(savedShortcut);
+      setShortcutEnabled(savedShortcutEnabled);
+      try {
+        await applyGlobalShortcut(savedShortcut, savedShortcutEnabled);
+      } catch (error) {
+        console.error("Failed to restore shortcut:", error);
+      }
       const vol = await store.get<number>("volume");
       if (typeof vol === 'number') {
         setVolume(vol);
@@ -255,23 +280,8 @@ export default function SettingsWindow() {
     await store.save();
     await emit("settings-updated", { skipCodeBlocks });
 
-    // Re-register the shortcut
     try {
-      const platformDefault = getPlatformDefault();
-      if (await isRegistered(platformDefault)) {
-        await unregister(platformDefault);
-      }
-      if (await isRegistered(shortcut)) {
-        await unregister(shortcut);
-      }
-
-      if (shortcutEnabled) {
-        await register(shortcut, (event) => {
-          if (event.state === "Pressed") {
-            void emit("shortcut-triggered");
-          }
-        });
-      }
+      await applyGlobalShortcut(shortcut, shortcutEnabled);
     } catch (error) {
       console.error("Failed to register shortcut:", error);
     }
