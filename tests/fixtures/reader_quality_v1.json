@@ -90,6 +90,7 @@
       "category": "numbers",
       "priority": "critical",
       "input": "The total increased from $12.50 to $19.99, or about 59.9%.",
+      "expectedSpokenSegments": ["The total increased from 12 dollars and 50 cents to 19 dollars and 99 cents, or about 59 point 9 percent."],
       "concerns": ["currency", "decimal", "percentage"]
     },
     {
@@ -97,6 +98,7 @@
       "category": "numbers",
       "priority": "critical",
       "input": "The meeting is on 2026-07-25 at 3:05 p.m.",
+      "expectedSpokenSegments": ["The meeting is on July 25, 2026 at 3 oh 5 P M."],
       "concerns": ["iso-date", "time", "abbreviation"]
     },
     {
@@ -104,6 +106,7 @@
       "category": "numbers",
       "priority": "high",
       "input": "Upgrade from v0.6.3 to v0.7.0, then test speeds from 0.5x to 2.0x.",
+      "expectedSpokenSegments": ["Upgrade from version 0 point 6 point 3 to version 0 point 7 point 0, then test speeds from 0 point 5 times to 2 point 0 times."],
       "concerns": ["semantic-version", "decimal", "range", "multiplier"]
     },
     {
@@ -118,6 +121,7 @@
       "category": "technical",
       "priority": "critical",
       "input": "Open https://example.com/docs, email support@example.com, or inspect /Users/me/project/app.ts.",
+      "expectedSpokenSegments": ["Open example dot com slash docs, email support at example dot com, or inspect path Users slash me slash project slash app dot T S."],
       "concerns": ["url-policy", "email-policy", "filesystem-path"]
     },
     {
