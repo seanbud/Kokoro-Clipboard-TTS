@@ -231,6 +231,23 @@ async fn hide_reader_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+const WINDOWS_READER_NATIVE_SHADOW: bool = false;
+
+fn configure_reader_window(_app: &AppHandle) -> tauri::Result<()> {
+    // DWM draws the shadow for an undecorated transparent window around the
+    // full native rectangle, which exposes the otherwise invisible 380x140
+    // reader viewport as a thin frame. The pill has its own inset CSS shadow,
+    // so Windows can drop the native shadow without losing visual depth.
+    // macOS keeps the configured native shadow unchanged.
+    #[cfg(target_os = "windows")]
+    if let Some(reader) = _app.get_webview_window("reader") {
+        reader.set_shadow(WINDOWS_READER_NATIVE_SHADOW)?;
+    }
+
+    Ok(())
+}
+
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let read_clipboard_item =
         MenuItem::with_id(app, "read_clipboard", "Read Clipboard", true, None::<&str>)?;
@@ -329,13 +346,26 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+#[cfg(all(test, target_os = "windows"))]
+mod reader_window_tests {
+    use super::WINDOWS_READER_NATIVE_SHADOW;
+
+    #[test]
+    fn windows_reader_uses_only_the_inset_css_shadow() {
+        assert!(!WINDOWS_READER_NATIVE_SHADOW);
+    }
+}
+
 #[cfg(all(test, target_os = "macos"))]
 mod tray_icon_tests {
     use super::MACOS_TRAY_ICON;
 
     #[test]
     fn macos_tray_icon_is_a_sparse_retina_template() {
-        assert_eq!((MACOS_TRAY_ICON.width(), MACOS_TRAY_ICON.height()), (44, 44));
+        assert_eq!(
+            (MACOS_TRAY_ICON.width(), MACOS_TRAY_ICON.height()),
+            (44, 44)
+        );
 
         let visible_pixels = MACOS_TRAY_ICON
             .rgba()
@@ -404,6 +434,9 @@ pub fn run() {
                 let _ = splash.show();
             }
             let handle = app.handle().clone();
+
+            // ── Apply platform-specific reader chrome ──
+            configure_reader_window(&handle)?;
 
             // ── Setup System Tray ──
             setup_tray(&handle)?;
