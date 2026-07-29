@@ -9,6 +9,10 @@ mod sidecar;
 
 use sidecar::SidecarManager;
 
+#[cfg(target_os = "macos")]
+const MACOS_TRAY_ICON: tauri::image::Image<'static> =
+    tauri::include_image!("./icons/tray-icon-template.png");
+
 /// State shared across the application.
 pub struct AppState {
     pub sidecar: Mutex<SidecarManager>,
@@ -259,6 +263,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 
     #[cfg(target_os = "macos")]
     let tray_builder = tray_builder
+        .icon(MACOS_TRAY_ICON)
         .icon_as_template(true)
         .show_menu_on_left_click(true);
 
@@ -322,6 +327,26 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tray_icon_tests {
+    use super::MACOS_TRAY_ICON;
+
+    #[test]
+    fn macos_tray_icon_is_a_sparse_retina_template() {
+        assert_eq!((MACOS_TRAY_ICON.width(), MACOS_TRAY_ICON.height()), (44, 44));
+
+        let visible_pixels = MACOS_TRAY_ICON
+            .rgba()
+            .chunks_exact(4)
+            .filter(|pixel| pixel[3] > 16)
+            .count();
+        let total_pixels = (MACOS_TRAY_ICON.width() * MACOS_TRAY_ICON.height()) as usize;
+
+        assert!(visible_pixels > total_pixels / 10);
+        assert!(visible_pixels < total_pixels / 2);
+    }
 }
 
 // ─── App Entry ────────────────────────────────────────────────────────────────
