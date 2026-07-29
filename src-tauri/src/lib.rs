@@ -200,7 +200,7 @@ async fn ensure_reader_visible(app: AppHandle) -> Result<(), String> {
             // Move to cursor and show
             if let Ok(cursor_pos) = app.cursor_position() {
                 let size = win.inner_size().unwrap_or(tauri::PhysicalSize {
-                    width: 320,
+                    width: 380,
                     height: 140,
                 });
                 let x = (cursor_pos.x - (size.width as f64 / 2.0)) as i32;

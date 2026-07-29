@@ -17,6 +17,7 @@ import {
   updateDownloadProgress,
   type UpdateDownloadProgress,
 } from "../utils/updateProgress";
+import { getPlatformDefaultShortcut } from "../utils/shortcuts";
 
 // ─── Kokoro voice presets ──────────────────────────────────────────────────
 const VOICE_PRESETS = [
@@ -28,21 +29,13 @@ const VOICE_PRESETS = [
 ] as const;
 
 const DEFAULT_VOICE = "am_fenrir";
-const DEFAULT_SHORTCUT_WIN = "Super+Shift+Q";
-const DEFAULT_SHORTCUT_MAC = "Control+Option+R";
 const VOICE_PREVIEW_TEXT = "Okay, this is how I'll sound while reading for you.";
 
 type VoicePreviewState = "idle" | "preparing" | "playing";
 type UpdaterState = "idle" | "checking" | "current" | "available" | "downloading" | "ready" | "error";
 
-function getPlatformDefault() {
-  return navigator.userAgent.includes("Mac")
-    ? DEFAULT_SHORTCUT_MAC
-    : DEFAULT_SHORTCUT_WIN;
-}
-
 async function applyGlobalShortcut(shortcut: string, enabled: boolean) {
-  const platformDefault = getPlatformDefault();
+  const platformDefault = getPlatformDefaultShortcut();
   if (await isRegistered(platformDefault)) {
     await unregister(platformDefault);
   }
@@ -61,7 +54,7 @@ async function applyGlobalShortcut(shortcut: string, enabled: boolean) {
 
 export default function SettingsWindow() {
   const [voice, setVoice] = useState(DEFAULT_VOICE);
-  const [shortcut, setShortcut] = useState(getPlatformDefault());
+  const [shortcut, setShortcut] = useState(getPlatformDefaultShortcut());
   const [shortcutEnabled, setShortcutEnabled] = useState(true);
   const [recording, setRecording] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -119,7 +112,7 @@ export default function SettingsWindow() {
       if (v) setVoice(v);
       const s = await store.get<string>("shortcut");
       const e = await store.get<boolean>("shortcut-enabled");
-      const savedShortcut = s || getPlatformDefault();
+      const savedShortcut = s || getPlatformDefaultShortcut();
       const savedShortcutEnabled = e ?? true;
       setShortcut(savedShortcut);
       setShortcutEnabled(savedShortcutEnabled);
@@ -465,7 +458,7 @@ export default function SettingsWindow() {
             </div>
             <button
               onClick={() => {
-                setShortcut(getPlatformDefault());
+                setShortcut(getPlatformDefaultShortcut());
                 setRecording(false);
               }}
               className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-white/5 border border-white/10 hover:bg-white/10 transition-smooth text-white/60 hover:text-white/90"
