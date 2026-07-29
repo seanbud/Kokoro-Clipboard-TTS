@@ -241,3 +241,56 @@ jobs:
           updaterJsonPreferNsis: true
           releaseAssetNamePattern: "[name]_[version]_[platform]_[arch][setup].[ext]"
           args: ${{ startsWith(matrix.platform, 'macos-') && format('--target {0}', matrix.target) || '' }}
+
+  verify-updater-release:
+    name: Verify signed updater release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Verify updater assets and platform metadata
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t assets < <(
+            gh release view "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json assets \
+              --jq '.assets[].name'
+          )
+          printf '%s\n' "${assets[@]}"
+
+          printf '%s\n' "${assets[@]}" | grep --quiet --line-regexp 'latest.json'
+
+          signature_count="$({ printf '%s\n' "${assets[@]}" | grep --count '\.sig$'; } || true)"
+          test "$signature_count" -ge 3
+
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "$temp_dir"' EXIT
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern latest.json \
+            --dir "$temp_dir"
+
+          expected_version="${RELEASE_TAG#v}"
+          jq --exit-status --arg version "$expected_version" \
+            '.version == $version' \
+            "$temp_dir/latest.json"
+          jq --exit-status '
+            [
+              "darwin-aarch64",
+              "darwin-x86_64",
+              "windows-x86_64"
+            ] as $required
+            | . as $release
+            | all($required[]; (
+                $release.platforms[.].url | type == "string" and length > 0
+              ) and (
+                $release.platforms[.].signature | type == "string" and length > 0
+              ))
+          ' "$temp_dir/latest.json"
