@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Remove the thin native-window frame around the floating widget on Windows while preserving the pill shadow and macOS window appearance.
+
 ## 0.8.2 — 2026-07-28
 
 ### Fixed
