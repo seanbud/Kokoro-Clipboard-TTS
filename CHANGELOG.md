@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.1 — 2026-07-28
+
+### Fixed
+
+- Generate and sign the platform-specific updater bundles required by Tauri's in-app updater.
+- Fail the release workflow if updater signatures or any macOS/Windows entry in `latest.json` are missing.
+
+### Verification release
+
+This patch is intentionally small so an installed v0.8.0 build can verify the full signed download, install, and restart path before updater support is considered production-ready.
+
 ## 0.8.0 — 2026-07-27
 
 ### Highlights
