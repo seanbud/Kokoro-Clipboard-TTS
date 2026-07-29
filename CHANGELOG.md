@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.2 — 2026-07-28
+
+### Fixed
+
+- Restore the floating widget's visible close button after the Replay control widened the toolbar.
+- Keep Control+Option+R as the explicit first-run and Reset default on macOS.
+- Add a layout regression test that budgets enough native-window width for every widget control and its shadow padding.
+
 ## 0.8.1 — 2026-07-28
 
 ### Fixed
