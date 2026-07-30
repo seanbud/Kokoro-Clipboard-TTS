@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.8.3 — 2026-07-30
+
+### Changed
+
+- Use a dedicated monochrome Shiba template icon in the macOS menu bar while retaining the full-color application icon.
 
 ### Fixed
 
