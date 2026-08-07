@@ -34,6 +34,7 @@ Working release name: **Speech Intelligence**
 - W6 update/recovery: signed updater metadata, download progress, install/restart controls, startup milestones, saved-shortcut restoration, and version display are implemented. v0.8.0 bootstraps the signing channel; v0.8.1 must prove an installed update from v0.8.0.
 - W4.2 backend benchmark: corpus-driven PyTorch CPU/MPS runner and initial M2 reference suite implemented; Windows/CUDA and frozen-package measurements pending.
 - W5.3 Pocket TTS benchmark: isolated v2.1.0 CPU streaming runner and initial M2 unquantized/quantized measurements implemented; blind quality and frozen-package work pending.
+- W5.4 Chatterbox Nano benchmark: the official v0.1.7 implementation failed the Apple M2 size, first-audio, throughput, and memory gates. Keep it out of the app and revisit only after upstream provides a materially smaller streaming distribution; see `docs/investigations/chatterbox-nano-issue-27.md`.
 - Remaining W1–W6 work: active, sequenced below; engine promotion remains evidence-gated.
 
 ## Release outcome
