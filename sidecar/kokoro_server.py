@@ -9,6 +9,11 @@ from flask import Flask, request, jsonify
 try:
     from .tts_protocol import encode_tts_event, normalize_synthesis_segments
     from .audio_playback import AudioChunk, play_queued_audio
+    from .audio_safety import (
+        fade_from_silence,
+        fade_to_silence,
+        sanitize_audio_buffer,
+    )
     from .playback_session import PlaybackSessionController
     from .pipeline_loader import create_offline_pipeline
     from .sonic_speed import SonicSpeedProcessor
@@ -16,6 +21,7 @@ except ImportError:
     # Script/PyInstaller execution places the sidecar directory on sys.path.
     from tts_protocol import encode_tts_event, normalize_synthesis_segments
     from audio_playback import AudioChunk, play_queued_audio
+    from audio_safety import fade_from_silence, fade_to_silence, sanitize_audio_buffer
     from playback_session import PlaybackSessionController
     from pipeline_loader import create_offline_pipeline
     from sonic_speed import SonicSpeedProcessor
@@ -345,6 +351,9 @@ def tts():
             if len(played_audio.shape) == 1:
                 played_audio = played_audio.reshape(-1, 1)
 
+            # Keep invalid or over-range model samples away from the audio device.
+            played_audio = sanitize_audio_buffer(played_audio)
+
             pause_sample_count = int(24000 * chunk.pause_after_ms / 1000)
             if pause_sample_count:
                 played_audio = np.concatenate([
@@ -377,7 +386,7 @@ def tts():
                     chunkIndex=position.chunk_index,
                     sampleOffset=position.sample_offset,
                 )
-            return processed
+            return sanitize_audio_buffer(processed)
         
         try:
             # Open a persistent stream for the entire session
@@ -398,7 +407,9 @@ def tts():
                     on_paused=lambda position: emit_control_acknowledgement("paused", position),
                     on_resumed=lambda position: emit_control_acknowledgement("resumed", position),
                     process_audio_block=lambda audio: process_speed_block(speed_processor, audio),
-                    flush_audio=speed_processor.flush,
+                    flush_audio=lambda: sanitize_audio_buffer(speed_processor.flush()),
+                    pause_fade_audio=fade_to_silence,
+                    fade_in_audio=fade_from_silence,
                     source_block_size=480,
                 )
         except Exception as e:

@@ -58,8 +58,8 @@ describe("cleanTextForTTS", () => {
 
   // ── Lists ─────────────────────────────────────────────────────────────────
   it("strips unordered list bullets", () => {
-    const input = "- Item one\n- Item two\n* Item three";
-    expect(cleanTextForTTS(input)).toBe("Item one Item two Item three");
+    const input = "- Item one\n- Item two\n* Item three\n• Item four";
+    expect(cleanTextForTTS(input)).toBe("Item one Item two Item three Item four");
   });
 
   it("strips ordered list numbers", () => {

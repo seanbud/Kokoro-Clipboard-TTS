@@ -34,8 +34,8 @@ export function cleanTextForTTS(input: string): string {
   // Remove horizontal rules (---, ***, ___)
   text = text.replace(/^[\s]*([-*_]){3,}\s*$/gm, "");
 
-  // Remove unordered list bullets (- , * , + )
-  text = text.replace(/^\s*[-*+]\s+/gm, "");
+  // Remove Markdown and common rich-text list bullets.
+  text = text.replace(/^\s*[-*+•‣◦]\s+/gm, "");
 
   // Remove ordered list numbers (1. , 2. , etc.)
   text = text.replace(/^\s*\d+\.\s+/gm, "");

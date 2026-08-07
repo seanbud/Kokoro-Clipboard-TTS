@@ -40,6 +40,8 @@ def write_audio_blocks(
     should_interrupt: Callable[[], bool],
     before_write: Callable[[int, int], None] | None = None,
     after_write: Callable[[int, int], None] | None = None,
+    transform_write: Callable[[Any], Any] | None = None,
+    after_write_block: Callable[[Any], None] | None = None,
 ) -> BlockWriteResult:
     """Write audio sequentially and return the first unwritten sample offset.
 
@@ -61,8 +63,13 @@ def write_audio_blocks(
         if before_write is not None:
             before_write(offset, end_offset)
         start_offset_for_write = offset
-        stream.write(audio[offset:end_offset])
+        output_block = audio[offset:end_offset]
+        if transform_write is not None:
+            output_block = transform_write(output_block)
+        stream.write(output_block)
         offset = end_offset
+        if after_write_block is not None:
+            after_write_block(output_block)
         if after_write is not None:
             after_write(start_offset_for_write, end_offset)
 
@@ -81,6 +88,8 @@ def play_queued_audio(
     on_resumed: Callable[[Any], None] | None = None,
     process_audio_block: Callable[[Any], Any] | None = None,
     flush_audio: Callable[[], Any] | None = None,
+    pause_fade_audio: Callable[[Any], Any] | None = None,
+    fade_in_audio: Callable[[Any], Any] | None = None,
     source_block_size: int = 480,
     queue_timeout: float = 0.05,
 ) -> QueuePlaybackResult:
@@ -103,13 +112,44 @@ def play_queued_audio(
     end_received = False
     completed_chunks = 0
     playback_started = False
+    last_output_sample = None
+    resume_fade_pending = False
     stream.start()
+
+    def transform_output(block):
+        nonlocal resume_fade_pending
+        if resume_fade_pending and fade_in_audio is not None:
+            block = fade_in_audio(block)
+            resume_fade_pending = False
+        return block
+
+    def remember_output(block):
+        nonlocal last_output_sample
+        if len(block) == 0:
+            return
+        last_output_sample = block[-1]
+        if hasattr(last_output_sample, "copy"):
+            last_output_sample = last_output_sample.copy()
+
+    def pause_stream():
+        nonlocal resume_fade_pending
+        first_acknowledgement = session.acknowledge_pause()
+        if first_acknowledgement:
+            if pause_fade_audio is not None and last_output_sample is not None:
+                fade = pause_fade_audio(last_output_sample)
+                if len(fade) > 0:
+                    stream.write(fade)
+            if stream.active:
+                stream.stop()
+            resume_fade_pending = True
+            if on_paused is not None:
+                on_paused(session.position())
+        elif stream.active:
+            stream.stop()
 
     while not session.cancel_event.is_set():
         if session.pause_event.is_set():
-            stream.stop()
-            if session.acknowledge_pause() and on_paused is not None:
-                on_paused(session.position())
+            pause_stream()
             session.cancel_event.wait(0.01)
             continue
 
@@ -135,13 +175,13 @@ def play_queued_audio(
                     session.cancel_event.is_set() or session.pause_event.is_set()
                 ),
                 after_write=after_write,
+                transform_write=transform_output,
+                after_write_block=remember_output,
             )
             pending_offset = result.next_offset
             if not result.completed:
                 if session.pause_event.is_set():
-                    stream.stop()
-                    if session.acknowledge_pause() and on_paused is not None:
-                        on_paused(session.position())
+                    pause_stream()
                 continue
             pending_audio = None
             pending_offset = 0
@@ -197,15 +237,15 @@ def play_queued_audio(
                 session.cancel_event.is_set() or session.pause_event.is_set()
             ),
             after_write=after_write,
+            transform_write=transform_output,
+            after_write_block=remember_output,
         )
         current_offset = result.next_offset
         session.set_position(current_chunk.index, current_offset)
 
         if not result.completed:
             if session.pause_event.is_set():
-                stream.stop()
-                if session.acknowledge_pause() and on_paused is not None:
-                    on_paused(session.position())
+                pause_stream()
             continue
 
         audio_queue.task_done()

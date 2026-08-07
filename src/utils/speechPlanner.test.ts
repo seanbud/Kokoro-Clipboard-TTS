@@ -45,6 +45,23 @@ describe("speech planner", () => {
     ]);
   });
 
+  it("strips Unicode and Markdown bullets before text reaches Kokoro", () => {
+    const input = [
+      "• Sync status (done)",
+      "* Merged origin/development into the branch.",
+      "- Branch tip includes the merge commit.",
+    ].join("\n");
+
+    const segments = planTextForTTS(input);
+
+    expect(segments.map(({ kind, spokenText }) => ({ kind, spokenText }))).toEqual([
+      { kind: "list-item", spokenText: "Sync status (done)" },
+      { kind: "list-item", spokenText: "Merged origin/development into the branch." },
+      { kind: "list-item", spokenText: "Branch tip includes the merge commit." },
+    ]);
+    expect(segments.every((segment) => !/[•*]/.test(segment.spokenText))).toBe(true);
+  });
+
   it("infers a high-confidence heading when plain clipboard text retains only a line break", () => {
     const segments = planTextForTTS(
       "Why this matters\nThe listener needs a brief pause before this explanation begins.",

@@ -196,6 +196,40 @@ class AudioPlaybackTests(unittest.TestCase):
             list(range(12)),
         )
 
+    def test_queue_player_smooths_pause_and_resume_boundaries(self):
+        audio_queue = Queue()
+        audio_queue.put(AudioChunk(0, [0.8, 0.6, -0.5, -0.7], 0, "segment-0"))
+        audio_queue.put(None)
+        session = PlaybackSessionController().begin("smooth-request")
+
+        def pause_after_first_block(stream):
+            if len(stream.blocks) == 1:
+                session.pause()
+
+        stream = FakePersistentStream(after_write=pause_after_first_block)
+
+        def resume_after_ack(_position):
+            session.resume()
+
+        play_queued_audio(
+            stream,
+            audio_queue,
+            session,
+            prepare_audio=lambda chunk: chunk.audio,
+            block_size=2,
+            on_paused=resume_after_ack,
+            pause_fade_audio=lambda last_sample: [last_sample, last_sample / 2, 0.0],
+            fade_in_audio=lambda block: [0.0, block[-1]],
+        )
+
+        self.assertEqual(stream.stop_count, 1)
+        self.assertEqual(stream.start_count, 2)
+        self.assertEqual(stream.blocks, [
+            [0.8, 0.6],
+            [0.6, 0.3, 0.0],
+            [0.0, -0.7],
+        ])
+
     def test_queue_player_cancels_without_writing_future_chunks(self):
         audio_queue = Queue()
         audio_queue.put(AudioChunk(0, list(range(8)), 0, "segment-0"))
