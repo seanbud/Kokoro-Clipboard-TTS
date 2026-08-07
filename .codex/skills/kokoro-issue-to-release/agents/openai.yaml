@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kokoro Issue to Release"
+  short_description: "Safely take a Kokoro issue from diagnosis to release"
+  default_prompt: "Use this workflow to diagnose, fix, test, review, merge, and release a Kokoro Clipboard TTS GitHub issue."
