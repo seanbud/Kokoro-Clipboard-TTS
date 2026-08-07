@@ -48,6 +48,8 @@ type SpeechBlock = {
   stripPrefix?: RegExp;
 };
 
+const LIST_ITEM_PREFIX = /^\s*(?:[-*+•‣◦]|\d+[.)])\s+/;
+
 const FINAL_PAUSE_MS: Record<SpeechBlock["kind"], number> = {
   heading: 550,
   paragraph: 420,
@@ -126,7 +128,7 @@ function isHeading(line: SourceLine): boolean {
 }
 
 function isListItem(line: SourceLine): boolean {
-  return /^\s*(?:[-*+]|\d+[.)])\s+/.test(line.text);
+  return LIST_ITEM_PREFIX.test(line.text);
 }
 
 function isQuote(line: SourceLine): boolean {
@@ -206,7 +208,7 @@ function parseBlocks(input: string): SpeechBlock[] {
       blocks.push({
         kind: "list-item",
         lines: [line],
-        stripPrefix: /^\s*(?:[-*+]|\d+[.)])\s+/,
+        stripPrefix: LIST_ITEM_PREFIX,
       });
       index += 1;
       continue;
